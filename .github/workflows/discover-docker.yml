@@ -37,7 +37,7 @@ jobs:
           push: true
           tags: ghcr.io/mattbrodeur28-cmyk/reaparr-v2:discover
           build-args: |
-            VERSION=discover
+            VERSION=1.0.0-discover.${{ github.run_number }}
             INFORMATIONAL_VERSION=${{ github.sha }}
             BUILDPLATFORM=linux/amd64
             TARGETPLATFORM=linux/amd64
