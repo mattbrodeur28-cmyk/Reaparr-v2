@@ -2,6 +2,7 @@
 	<!--	Instead of multiple layouts we merge into one default layout to prevent full
         page change (flashing white background) during transitions.	-->
 	<q-layout
+		class="v5-shell"
 		view="hHh LpR lFf">
 		<PageLoadOverlay :loading="isLoading">
 			<!--	Use for everything else	-->
@@ -161,3 +162,7 @@ onMounted(() => {
 	});
 });
 </script>
+
+<style lang="scss">
+@use '@/assets/scss/v5-modern.scss';
+</style>

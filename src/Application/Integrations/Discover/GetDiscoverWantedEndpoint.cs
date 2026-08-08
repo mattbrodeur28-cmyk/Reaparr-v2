@@ -9,6 +9,9 @@ public sealed record DiscoverWantedItemDTO
     public int Year { get; init; }
     public required string MediaType { get; init; }
     public required string Source { get; init; }
+    public int? TmdbId { get; init; }
+    public int? TvdbId { get; init; }
+    public string? ImdbId { get; init; }
 }
 
 public sealed record GetDiscoverWantedEndpointResponse
@@ -87,10 +90,7 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         }
 
         var deduplicated = response.Items
-            .GroupBy(
-                x => $"{x.MediaType}|{NormalizeTitle(x.Title)}|{x.Year}",
-                StringComparer.OrdinalIgnoreCase
-            )
+            .GroupBy(GetIdentityKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
 
@@ -131,32 +131,30 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
                 : default;
 
             if (records.ValueKind != JsonValueKind.Array)
-            {
                 break;
-            }
 
             foreach (var record in records.EnumerateArray())
             {
                 var title = GetString(record, "title");
                 if (string.IsNullOrWhiteSpace(title))
-                {
                     continue;
-                }
 
-                result.Add(new DiscoverWantedItemDTO
-                {
-                    Title = title,
-                    Year = GetInt(record, "year"),
-                    MediaType = "Movie",
-                    Source = "Radarr",
-                });
+                result.Add(
+                    new DiscoverWantedItemDTO
+                    {
+                        Title = title,
+                        Year = GetInt(record, "year"),
+                        MediaType = "Movie",
+                        Source = "Radarr",
+                        TmdbId = GetNullableInt(record, "tmdbId"),
+                        ImdbId = NullIfBlank(GetString(record, "imdbId")),
+                    }
+                );
             }
 
             var totalRecords = GetInt(root, "totalRecords");
             if (page * PageSize >= totalRecords || records.GetArrayLength() == 0)
-            {
                 break;
-            }
 
             page++;
         }
@@ -196,37 +194,37 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
                 : default;
 
             if (records.ValueKind != JsonValueKind.Array)
-            {
                 break;
-            }
 
             foreach (var record in records.EnumerateArray())
             {
-                if (!record.TryGetProperty("series", out var series) || series.ValueKind != JsonValueKind.Object)
-                {
+                if (
+                    !record.TryGetProperty("series", out var series)
+                    || series.ValueKind != JsonValueKind.Object
+                )
                     continue;
-                }
 
                 var title = GetString(series, "title");
                 if (string.IsNullOrWhiteSpace(title))
-                {
                     continue;
-                }
 
-                result.Add(new DiscoverWantedItemDTO
-                {
-                    Title = title,
-                    Year = GetInt(series, "year"),
-                    MediaType = "TvShow",
-                    Source = "Sonarr",
-                });
+                result.Add(
+                    new DiscoverWantedItemDTO
+                    {
+                        Title = title,
+                        Year = GetInt(series, "year"),
+                        MediaType = "TvShow",
+                        Source = "Sonarr",
+                        TmdbId = GetNullableInt(series, "tmdbId"),
+                        TvdbId = GetNullableInt(series, "tvdbId"),
+                        ImdbId = NullIfBlank(GetString(series, "imdbId")),
+                    }
+                );
             }
 
             var totalRecords = GetInt(root, "totalRecords");
             if (page * PageSize >= totalRecords || records.GetArrayLength() == 0)
-            {
                 break;
-            }
 
             page++;
         }
@@ -242,25 +240,55 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         return request;
     }
 
+    private static string GetIdentityKey(DiscoverWantedItemDTO item)
+    {
+        if (item.MediaType == "Movie" && item.TmdbId.HasValue)
+            return $"movie:tmdb:{item.TmdbId.Value}";
+
+        if (item.MediaType == "TvShow" && item.TvdbId.HasValue)
+            return $"tv:tvdb:{item.TvdbId.Value}";
+
+        if (item.TmdbId.HasValue)
+            return $"{item.MediaType}:tmdb:{item.TmdbId.Value}";
+
+        if (!string.IsNullOrWhiteSpace(item.ImdbId))
+            return $"{item.MediaType}:imdb:{item.ImdbId.Trim().ToLowerInvariant()}";
+
+        return $"{item.MediaType}:title:{NormalizeTitle(item.Title)}:{item.Year}";
+    }
+
     private static string GetString(JsonElement element, string property)
     {
-        return element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString() ?? string.Empty
-            : string.Empty;
+        return element.TryGetProperty(property, out var value)
+            && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
     }
 
     private static int GetInt(JsonElement element, string property)
     {
-        return element.TryGetProperty(property, out var value) && value.TryGetInt32(out var result)
-            ? result
-            : 0;
+        return element.TryGetProperty(property, out var value)
+            && value.TryGetInt32(out var result)
+                ? result
+                : 0;
     }
+
+    private static int? GetNullableInt(JsonElement element, string property)
+    {
+        return element.TryGetProperty(property, out var value)
+            && value.TryGetInt32(out var result)
+            && result > 0
+                ? result
+                : null;
+    }
+
+    private static string? NullIfBlank(string value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string NormalizeTitle(string value)
     {
-        return new string(value
-            .Where(char.IsLetterOrDigit)
-            .Select(char.ToLowerInvariant)
-            .ToArray());
+        return new string(
+            value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray()
+        );
     }
 }

@@ -1,156 +1,218 @@
 <template>
-	<q-page class="discover-page q-pa-lg">
-		<div class="discover-header">
-			<div>
-				<div class="text-h3 text-weight-bold">
-					Discover
+	<q-page class="discover-page-v5">
+		<section class="discover-hero">
+			<div class="discover-hero__glow discover-hero__glow--one" />
+			<div class="discover-hero__glow discover-hero__glow--two" />
+
+			<div class="discover-hero__content">
+				<div class="discover-kicker">
+					<q-icon name="mdi-compass-rose" />
+					<span>Smart discovery</span>
 				</div>
-				<div class="text-subtitle1 text-grey-5 q-mt-xs">
-					One title per card. Reaparr automatically chooses the best online source when you download.
-				</div>
-				<div
-					v-if="discoverStore.lastUpdatedAt"
-					class="text-caption text-grey-6 q-mt-xs">
-					{{ cacheLabel }}
+
+				<h1 class="discover-title">
+					Discover what your library is missing.
+				</h1>
+
+				<p class="discover-subtitle">
+					One title, one card, the best online source. Exact media IDs merge duplicate servers and the catalog loads in bounded windows instead of querying everything at once.
+				</p>
+
+				<div class="discover-hero__meta">
+					<div class="discover-status-pill">
+						<span
+							class="discover-status-dot"
+							:class="{ 'discover-status-dot--live': !discoverStore.refreshing }" />
+						{{ cacheLabel || 'Ready' }}
+					</div>
+					<div class="discover-status-pill">
+						<q-icon name="mdi-lightning-bolt-outline" />
+						{{ snapshotPerformanceLabel }}
+					</div>
+					<div class="discover-status-pill">
+						<q-icon name="mdi-database-eye-outline" />
+						Server window {{ discoverStore.serverItemLimit }} / state
+					</div>
 				</div>
 			</div>
 
-			<q-btn
-				color="primary"
-				icon="mdi-refresh"
-				label="Refresh"
-				:loading="discoverStore.refreshing"
-				data-cy="discover-refresh"
-				@click="refresh" />
-		</div>
+			<div class="discover-hero__actions">
+				<q-btn
+					unelevated
+					no-caps
+					rounded
+					class="v5-primary-action"
+					icon="mdi-refresh"
+					label="Refresh catalog"
+					:loading="discoverStore.refreshing"
+					data-cy="discover-refresh"
+					@click="refresh" />
+			</div>
+		</section>
 
-		<div class="discover-stats q-mt-lg">
-			<q-card
-				flat
-				bordered
-				class="discover-stat-card">
-				<q-card-section>
-					<div class="text-caption text-grey-5">
-						Showing
-					</div>
-					<div class="text-h4 text-weight-bold">
+		<section class="discover-metrics">
+			<div class="discover-metric">
+				<div class="discover-metric__icon">
+					<q-icon name="mdi-view-grid-outline" />
+				</div>
+				<div>
+					<div class="discover-metric__value">
 						{{ filteredItems.length }}
 					</div>
-				</q-card-section>
-			</q-card>
-
-			<q-card
-				flat
-				bordered
-				class="discover-stat-card">
-				<q-card-section>
-					<div class="text-caption text-grey-5">
-						Missing / Incomplete
+					<div class="discover-metric__label">
+						Loaded matches
 					</div>
-					<div class="text-h4 text-weight-bold">
+				</div>
+			</div>
+
+			<div class="discover-metric">
+				<div class="discover-metric__icon discover-metric__icon--missing">
+					<q-icon name="mdi-plus-circle-outline" />
+				</div>
+				<div>
+					<div class="discover-metric__value">
 						{{ missingCount }}
 					</div>
-				</q-card-section>
-			</q-card>
-
-			<q-card
-				flat
-				bordered
-				class="discover-stat-card">
-				<q-card-section>
-					<div class="text-caption text-grey-5">
-						Upgrades
+					<div class="discover-metric__label">
+						Missing / incomplete
 					</div>
-					<div class="text-h4 text-weight-bold">
+				</div>
+			</div>
+
+			<div class="discover-metric">
+				<div class="discover-metric__icon discover-metric__icon--upgrade">
+					<q-icon name="mdi-arrow-up-bold-circle-outline" />
+				</div>
+				<div>
+					<div class="discover-metric__value">
 						{{ upgradeCount }}
 					</div>
-				</q-card-section>
-			</q-card>
-
-			<q-card
-				flat
-				bordered
-				class="discover-stat-card">
-				<q-card-section>
-					<div class="text-caption text-grey-5">
-						Extra duplicate sources merged
+					<div class="discover-metric__label">
+						Upgrade opportunities
 					</div>
-					<div class="text-h4 text-weight-bold">
-						{{ mergedSourceCount }}
-					</div>
-				</q-card-section>
-			</q-card>
-		</div>
+				</div>
+			</div>
 
-		<q-card
-			flat
-			bordered
-			class="discover-toolbar q-mt-lg">
-			<q-card-section class="discover-toolbar-content">
+			<div class="discover-metric">
+				<div class="discover-metric__icon discover-metric__icon--identity">
+					<q-icon name="mdi-fingerprint" />
+				</div>
+				<div>
+					<div class="discover-metric__value">
+						{{ exactIdentityCount }}
+					</div>
+					<div class="discover-metric__label">
+						Exact identity groups
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="discover-control-panel">
+			<div class="discover-control-panel__top">
 				<q-input
 					v-model="search"
-					outlined
-					dense
+					borderless
 					clearable
 					debounce="150"
-					placeholder="Search Discover"
-					class="discover-search"
+					placeholder="Search the loaded catalog"
+					class="discover-search-v5"
 					data-cy="discover-search">
 					<template #prepend>
 						<q-icon name="mdi-magnify" />
 					</template>
 				</q-input>
 
-				<q-btn-toggle
-					v-model="mediaTypeFilter"
-					unelevated
-					no-caps
-					toggle-color="primary"
-					:options="mediaTypeOptions"
-					data-cy="discover-media-type-filter" />
+				<div class="discover-view-controls">
+					<div class="discover-control-label">
+						Per page
+					</div>
+					<q-select
+						v-model="pageSize"
+						dense
+						borderless
+						emit-value
+						map-options
+						:options="pageSizeOptions"
+						class="discover-page-size"
+						data-cy="discover-page-size" />
+				</div>
+			</div>
 
-				<q-btn-toggle
-					v-model="reasonFilter"
-					unelevated
-					no-caps
-					toggle-color="primary"
-					:options="reasonOptions"
-					data-cy="discover-reason-filter" />
+			<div class="discover-control-panel__bottom">
+				<div class="discover-segment">
+					<q-btn-toggle
+						v-model="mediaTypeFilter"
+						unelevated
+						no-caps
+						rounded
+						toggle-color="primary"
+						:options="mediaTypeOptions"
+						data-cy="discover-media-type-filter" />
+				</div>
 
-				<q-separator
-					vertical
-					class="discover-toolbar-separator" />
+				<div class="discover-segment">
+					<q-btn-toggle
+						v-model="reasonFilter"
+						unelevated
+						no-caps
+						rounded
+						toggle-color="primary"
+						:options="reasonOptions"
+						data-cy="discover-reason-filter" />
+				</div>
 
-				<div class="discover-wanted-toggle">
+				<div class="discover-wanted-toggle-v5">
 					<q-toggle
 						v-model="wantedOnly"
 						color="primary"
 						:disable="!discoverStore.arrConfigured"
-						label="Sonarr / Radarr missing only" />
-					<div class="text-caption text-grey-6">
-						Default: limit missing titles to *arr; upgrade opportunities still appear
-					</div>
+						label="Only missing from Sonarr / Radarr" />
+					<span>
+						Upgrade opportunities stay visible.
+					</span>
 				</div>
-			</q-card-section>
-		</q-card>
+			</div>
+		</section>
+
+		<div
+			v-if="discoverStore.serverHasMore"
+			class="discover-window-note">
+			<div>
+				<q-icon
+					name="mdi-speedometer"
+					size="20px" />
+				<span>
+					Reaparr stopped after {{ discoverStore.serverItemLimit }} items per comparison stream instead of querying the entire remote catalog.
+				</span>
+			</div>
+			<q-btn
+				flat
+				no-caps
+				rounded
+				icon="mdi-plus"
+				:label="`Load ${pageSize} more`"
+				:loading="discoverStore.refreshing"
+				@click="loadMore" />
+		</div>
 
 		<q-banner
 			v-if="!discoverStore.arrConfigured"
-			class="bg-info text-white q-mt-md rounded-borders">
-			Configure Radarr and/or Sonarr in Reaparr to enable the wanted-only Discover filter.
+			class="v5-banner v5-banner--info">
+			Configure Radarr and/or Sonarr to enable wanted-only discovery.
 		</q-banner>
 
 		<q-banner
 			v-else-if="!discoverStore.arrDataAvailable"
-			class="bg-warning text-dark q-mt-md rounded-borders">
-			The Sonarr/Radarr wanted list is unavailable right now, so Discover is temporarily showing the full Plex missing/upgrade feed.
+			class="v5-banner v5-banner--warning">
+			The Sonarr/Radarr wanted list is unavailable, so Discover is showing the Plex missing and upgrade feed.
 		</q-banner>
 
 		<q-banner
-			v-if="discoverStore.arrWarnings.length"
-			class="bg-warning text-dark q-mt-md rounded-borders">
+			v-if="allWarnings.length"
+			class="v5-banner v5-banner--warning">
 			<div
-				v-for="warning in discoverStore.arrWarnings"
+				v-for="warning in allWarnings"
 				:key="warning">
 				{{ warning }}
 			</div>
@@ -158,99 +220,172 @@
 
 		<q-banner
 			v-if="discoverStore.errorMessage"
-			class="bg-warning text-dark q-mt-md rounded-borders">
+			class="v5-banner v5-banner--warning">
 			{{ discoverStore.errorMessage }}
 		</q-banner>
 
-		<div
+		<section
 			v-if="discoverStore.loading && !discoverStore.items.length"
-			class="discover-loading">
-			<QSpinner
-				size="48px"
-				color="primary" />
-			<div class="text-subtitle1 q-mt-md">
-				Building your Discover list…
+			class="discover-skeleton-grid">
+			<div
+				v-for="index in 10"
+				:key="index"
+				class="discover-skeleton-card">
+				<q-skeleton
+					type="rect"
+					class="discover-skeleton-poster" />
+				<q-skeleton
+					type="text"
+					width="82%"
+					class="q-mt-md" />
+				<q-skeleton
+					type="text"
+					width="58%" />
 			</div>
-			<div class="text-caption text-grey-5">
-				{{ discoverStore.completedQueries }} / {{ discoverStore.totalQueries }} library checks complete
-			</div>
-		</div>
+		</section>
 
 		<template v-else>
 			<div
 				v-if="discoverStore.refreshing && discoverStore.items.length"
-				class="discover-refreshing text-caption text-grey-5 q-mt-md">
+				class="discover-refresh-strip">
 				<QSpinner
 					size="18px"
 					class="q-mr-sm" />
-				Refreshing in the background — cached results stay visible.
+				Updating the catalog while your cached results stay usable.
 			</div>
 
 			<div
 				v-if="filteredItems.length"
-				class="discover-grid q-mt-lg"
-				data-cy="discover-grid">
-				<div
-					v-for="item in filteredItems"
-					:key="item.key"
-					class="discover-item">
-					<div class="discover-reason-row">
-						<q-chip
-							dense
-							:color="reasonColor(item.comparisonState)"
-							text-color="white"
-							:icon="reasonIcon(item.comparisonState)">
-							{{ reasonLabel(item.comparisonState) }}
-						</q-chip>
-
-						<q-chip
-							v-if="item.sources.length > 1"
-							dense
-							outline
-							color="secondary"
-							icon="mdi-server-network">
-							{{ item.sources.length }} sources
-						</q-chip>
+				class="discover-results-header">
+				<div>
+					<div class="discover-results-title">
+						Your Discover feed
 					</div>
-
-					<MediaPoster
-						:media-item="item.media"
-						@download="handleDownload($event, item)"
-						@open-media-details="openMediaDetails" />
-
-					<div class="discover-source text-caption text-grey-5">
-						<div class="discover-source-line">
-							<q-icon
-								:name="discoverStore.isSourceOnline(item.media.plexServerId) ? 'mdi-server-network' : 'mdi-server-network-off'"
-								:color="discoverStore.isSourceOnline(item.media.plexServerId) ? 'positive' : 'negative'"
-								size="16px" />
-							<span>
-								Best: {{ serverStore.getServerName(item.media.plexServerId) }}
-							</span>
-						</div>
-						<div>
-							{{ qualityLabel(item.media) }}
-							<span v-if="item.wantedBy.length">
-								• Wanted by {{ item.wantedBy.join(' + ') }}
-							</span>
-						</div>
+					<div class="discover-results-subtitle">
+						Showing {{ displayStart }}–{{ displayEnd }} of {{ filteredItems.length }} loaded matches
+						<span v-if="discoverStore.serverHasMore">
+							• more available on the server
+						</span>
 					</div>
+				</div>
+				<div class="discover-results-badges">
+					<span class="discover-mini-badge">
+						{{ mergedSourceCount }} duplicate sources merged
+					</span>
+					<span class="discover-mini-badge">
+						{{ discoverStore.serverCacheStatus || 'Waiting' }} snapshot
+					</span>
 				</div>
 			</div>
 
 			<div
+				v-if="pagedItems.length"
+				class="discover-grid-v5"
+				data-cy="discover-grid">
+				<article
+					v-for="item in pagedItems"
+					:key="item.key"
+					class="discover-card-v5">
+					<div class="discover-card-v5__poster">
+						<MediaPoster
+							:media-item="item.media"
+							@download="handleDownload($event, item)"
+							@open-media-details="openMediaDetails" />
+
+						<div class="discover-card-v5__badges">
+							<span
+								class="discover-reason-badge"
+								:class="reasonClass(item.comparisonState)">
+								<q-icon :name="reasonIcon(item.comparisonState)" />
+								{{ reasonLabel(item.comparisonState) }}
+							</span>
+
+							<span
+								v-if="item.sources.length > 1"
+								class="discover-source-count">
+								<q-icon name="mdi-server-network" />
+								{{ item.sources.length }}
+							</span>
+						</div>
+					</div>
+
+					<div class="discover-card-v5__details">
+						<div class="discover-card-v5__identity">
+							<q-icon
+								name="mdi-fingerprint"
+								:class="{ 'text-warning': item.identityBasis === 'title-year' }" />
+							{{ identityLabel(item) }}
+						</div>
+
+						<div class="discover-card-v5__source">
+							<div class="discover-card-v5__source-name">
+								<span
+									class="discover-online-dot"
+									:class="{ 'discover-online-dot--online': discoverStore.isSourceOnline(item.media.plexServerId) }" />
+								{{ serverStore.getServerName(item.media.plexServerId) }}
+							</div>
+							<div class="discover-card-v5__quality">
+								{{ qualityLabel(item.media) }}
+								<span v-if="item.wantedBy.length">
+									• {{ item.wantedBy.join(' + ') }}
+								</span>
+							</div>
+						</div>
+					</div>
+				</article>
+			</div>
+
+			<div
+				v-if="filteredItems.length"
+				class="discover-pagination">
+				<div class="discover-pagination__summary">
+					Page {{ page }} of {{ pageCount }}
+				</div>
+				<q-pagination
+					v-model="page"
+					:max="pageCount"
+					:max-pages="7"
+					direction-links
+					boundary-links
+					icon-first="mdi-page-first"
+					icon-last="mdi-page-last"
+					icon-prev="mdi-chevron-left"
+					icon-next="mdi-chevron-right"
+					color="primary" />
+				<q-btn
+					v-if="discoverStore.serverHasMore"
+					flat
+					no-caps
+					rounded
+					icon="mdi-database-plus-outline"
+					:label="`Load ${pageSize} more from server`"
+					:loading="discoverStore.refreshing"
+					@click="loadMore" />
+			</div>
+
+			<div
 				v-else
-				class="discover-empty q-mt-xl">
-				<q-icon
-					name="mdi-check-decagram-outline"
-					size="64px"
-					color="positive" />
-				<div class="text-h5 q-mt-md">
-					Nothing to discover with these filters
+				class="discover-empty-v5">
+				<div class="discover-empty-v5__icon">
+					<q-icon
+						name="mdi-check-decagram-outline"
+						size="54px" />
 				</div>
-				<div class="text-body2 text-grey-5 q-mt-sm">
-					Try turning off the Sonarr/Radarr missing-only flag, or refresh after your Plex and *arr libraries update.
+				<div class="discover-empty-v5__title">
+					Nothing matches these filters
 				</div>
+				<div class="discover-empty-v5__copy">
+					Try a different filter, disable the Sonarr/Radarr-only switch, or load more of the remote catalog.
+				</div>
+				<q-btn
+					v-if="discoverStore.serverHasMore"
+					unelevated
+					no-caps
+					rounded
+					class="v5-primary-action q-mt-lg"
+					icon="mdi-database-plus-outline"
+					:label="`Load ${pageSize} more`"
+					@click="loadMore" />
 			</div>
 		</template>
 
@@ -291,6 +426,15 @@ const search = ref('');
 const mediaTypeFilter = ref<'all' | 'movies' | 'tv'>('all');
 const reasonFilter = ref<'all' | 'missing' | 'upgrades'>('all');
 const wantedOnly = useLocalStorage('reaparr-discover-wanted-only', true);
+const pageSize = useLocalStorage<number>('reaparr-discover-page-size', 100);
+const page = ref(1);
+
+const pageSizeOptions = [
+	{ label: '25', value: 25 },
+	{ label: '50', value: 50 },
+	{ label: '100', value: 100 },
+	{ label: '200', value: 200 },
+];
 
 const mediaTypeOptions = [
 	{ label: 'All', value: 'all' },
@@ -352,6 +496,28 @@ const filteredItems = computed(() => {
 	});
 });
 
+const pageCount = computed(() =>
+	Math.max(1, Math.ceil(get(filteredItems).length / get(pageSize))),
+);
+
+const pagedItems = computed(() => {
+	const size = get(pageSize);
+	const currentPage = Math.min(get(page), get(pageCount));
+	const start = (currentPage - 1) * size;
+	return get(filteredItems).slice(start, start + size);
+});
+
+const displayStart = computed(() => {
+	if (!get(filteredItems).length) {
+		return 0;
+	}
+	return (Math.min(get(page), get(pageCount)) - 1) * get(pageSize) + 1;
+});
+
+const displayEnd = computed(() =>
+	Math.min(get(displayStart) + get(pageSize) - 1, get(filteredItems).length),
+);
+
 const missingCount = computed(() =>
 	get(filteredItems).filter((item) => missingStates.includes(item.comparisonState)).length,
 );
@@ -364,6 +530,36 @@ const mergedSourceCount = computed(() =>
 	discoverStore.items.reduce((count, item) => count + Math.max(0, item.sources.length - 1), 0),
 );
 
+const exactIdentityCount = computed(() =>
+	discoverStore.items.filter((item) => item.identityBasis !== 'title-year').length,
+);
+
+const allWarnings = computed(() => [
+	...discoverStore.arrWarnings,
+	...discoverStore.identityWarnings,
+	...discoverStore.snapshotWarnings,
+]);
+
+const snapshotPerformanceLabel = computed(() => {
+	const buildMs = discoverStore.serverBuildMilliseconds;
+	const ageSeconds = discoverStore.serverSnapshotAgeSeconds;
+	const ageMinutes = Math.max(0, Math.round(ageSeconds / 60));
+
+	if (!discoverStore.serverCacheStatus) {
+		return 'Snapshot ready on first load';
+	}
+
+	if (discoverStore.serverCacheStatus === 'Rebuilt') {
+		return `Built in ${buildMs} ms`;
+	}
+
+	if (ageMinutes < 1) {
+		return 'Snapshot is less than a minute old';
+	}
+
+	return `${ageMinutes}m old • ${buildMs} ms build`;
+});
+
 const cacheLabel = computed(() => {
 	if (!discoverStore.lastUpdatedAt) {
 		return '';
@@ -371,6 +567,7 @@ const cacheLabel = computed(() => {
 
 	const ageMinutes = Math.max(0, Math.round((Date.now() - discoverStore.lastUpdatedAt) / 60000));
 	const source = discoverStore.loadedFromCache ? 'Cached feed' : 'Live feed';
+
 	if (ageMinutes < 1) {
 		return `${source} • updated just now`;
 	}
@@ -378,8 +575,33 @@ const cacheLabel = computed(() => {
 	return `${source} • updated ${ageMinutes}m ago`;
 });
 
+watch(
+	[search, mediaTypeFilter, reasonFilter, wantedOnly],
+	() => {
+		set(page, 1);
+	},
+);
+
+watch(pageSize, (nextSize) => {
+	set(page, 1);
+	if (nextSize > discoverStore.serverItemLimit) {
+		useSubscription(discoverStore.ensureItemLimit(nextSize).subscribe());
+	}
+});
+
+watch(pageCount, (maxPage) => {
+	if (get(page) > maxPage) {
+		set(page, maxPage);
+	}
+});
+
 function refresh() {
-	useSubscription(discoverStore.refresh().subscribe());
+	const requestedLimit = Math.max(discoverStore.serverItemLimit, get(pageSize));
+	useSubscription(discoverStore.refresh(true, requestedLimit).subscribe());
+}
+
+function loadMore() {
+	useSubscription(discoverStore.loadMore(get(pageSize)).subscribe());
 }
 
 function reasonLabel(state: PlexMediaComparisonState): string {
@@ -387,7 +609,7 @@ function reasonLabel(state: PlexMediaComparisonState): string {
 		case PlexMediaComparisonState.Missing:
 			return 'Missing';
 		case PlexMediaComparisonState.HigherQuality:
-			return 'Upgrade available';
+			return 'Upgrade';
 		case PlexMediaComparisonState.Partial:
 			return 'Incomplete';
 		case PlexMediaComparisonState.PartialAndHigherQuality:
@@ -397,18 +619,40 @@ function reasonLabel(state: PlexMediaComparisonState): string {
 	}
 }
 
-function reasonColor(state: PlexMediaComparisonState): string {
-	if (state === PlexMediaComparisonState.HigherQuality || state === PlexMediaComparisonState.PartialAndHigherQuality) {
-		return 'positive';
+function reasonClass(state: PlexMediaComparisonState): string {
+	if (
+		state === PlexMediaComparisonState.HigherQuality
+		|| state === PlexMediaComparisonState.PartialAndHigherQuality
+	) {
+		return 'discover-reason-badge--upgrade';
 	}
-	return 'primary';
+	return 'discover-reason-badge--missing';
 }
 
 function reasonIcon(state: PlexMediaComparisonState): string {
-	if (state === PlexMediaComparisonState.HigherQuality || state === PlexMediaComparisonState.PartialAndHigherQuality) {
+	if (
+		state === PlexMediaComparisonState.HigherQuality
+		|| state === PlexMediaComparisonState.PartialAndHigherQuality
+	) {
 		return 'mdi-arrow-up-bold-circle-outline';
 	}
 	return 'mdi-plus-circle-outline';
+}
+
+function identityLabel(item: IDiscoverItem): string {
+	switch (item.identityBasis) {
+		case 'tmdb':
+			return `TMDB ${item.identityValue}`;
+		case 'tvdb':
+			return `TVDB ${item.identityValue}`;
+		case 'imdb':
+			return `IMDb ${item.identityValue}`;
+		case 'plex':
+			return 'Plex ID';
+		case 'title-year':
+		default:
+			return 'Title + year fallback';
+	}
 }
 
 function qualityLabel(media: PlexMediaSlimDTO): string {
@@ -497,135 +741,610 @@ function openMediaDetails(mediaItem: PlexMediaSlimDTO) {
 
 onMounted(() => {
 	set(search, '');
-	useSubscription(discoverStore.initialize().subscribe());
+	useSubscription(discoverStore.initialize(get(pageSize)).subscribe());
 });
 </script>
 
 <style lang="scss">
-@use '@/assets/scss/variables.scss' as *;
-
-.discover-page {
+.discover-page-v5 {
+  position: relative;
+  z-index: 1;
   min-height: 100%;
+  padding: 28px clamp(18px, 3vw, 46px) 56px;
 }
 
-.discover-header {
+.discover-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 32px;
+  overflow: hidden;
+  padding: clamp(28px, 4vw, 52px);
+  border: 1px solid var(--v5-border);
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(255, 70, 98, 0.16), rgba(104, 72, 255, 0.08) 48%, rgba(10, 15, 28, 0.58)),
+    var(--v5-surface);
+  box-shadow: var(--v5-shadow-lg);
+  backdrop-filter: blur(22px);
+}
+
+.discover-hero__glow {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  filter: blur(65px);
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+.discover-hero__glow--one {
+  top: -190px;
+  right: 8%;
+  background: #ff3f6c;
+}
+
+.discover-hero__glow--two {
+  bottom: -240px;
+  left: 18%;
+  background: #7357ff;
+}
+
+.discover-hero__content,
+.discover-hero__actions {
+  position: relative;
+  z-index: 1;
+}
+
+.discover-hero__actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.discover-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--v5-accent-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.discover-title {
+  max-width: 860px;
+  margin: 0;
+  font-size: clamp(2.1rem, 4.3vw, 4.4rem);
+  font-weight: 850;
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.discover-subtitle {
+  max-width: 820px;
+  margin: 20px 0 0;
+  color: var(--v5-text-muted);
+  font-size: clamp(1rem, 1.4vw, 1.16rem);
+  line-height: 1.65;
+}
+
+.discover-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 24px;
+}
+
+.discover-status-pill,
+.discover-mini-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 11px;
+  border: 1px solid var(--v5-border);
+  border-radius: 999px;
+  background: var(--v5-surface-soft);
+  color: var(--v5-text-muted);
+  font-size: 0.78rem;
+}
+
+.discover-status-dot,
+.discover-online-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f05f73;
+  box-shadow: 0 0 0 4px rgba(240, 95, 115, 0.1);
+}
+
+.discover-status-dot--live,
+.discover-online-dot--online {
+  background: #5de6a2;
+  box-shadow: 0 0 0 4px rgba(93, 230, 162, 0.1);
+}
+
+.v5-primary-action {
+  min-height: 44px;
+  padding: 0 18px;
+  background: linear-gradient(135deg, #ff456a, #ff6d4a) !important;
+  color: white !important;
+  box-shadow: 0 12px 30px rgba(255, 69, 106, 0.24);
+}
+
+.discover-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.discover-metric {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 92px;
+  padding: 18px;
+  border: 1px solid var(--v5-border);
+  border-radius: 22px;
+  background: var(--v5-surface);
+  box-shadow: var(--v5-shadow-sm);
+  backdrop-filter: blur(18px);
+}
+
+.discover-metric__icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border-radius: 15px;
+  background: rgba(111, 87, 255, 0.15);
+  color: #a998ff;
+  font-size: 1.25rem;
+}
+
+.discover-metric__icon--missing {
+  background: rgba(255, 80, 112, 0.14);
+  color: #ff7891;
+}
+
+.discover-metric__icon--upgrade {
+  background: rgba(76, 220, 148, 0.14);
+  color: #66e4a7;
+}
+
+.discover-metric__icon--identity {
+  background: rgba(76, 181, 255, 0.14);
+  color: #71c8ff;
+}
+
+.discover-metric__value {
+  font-size: 1.65rem;
+  font-weight: 820;
+  line-height: 1;
+}
+
+.discover-metric__label {
+  margin-top: 6px;
+  color: var(--v5-text-muted);
+  font-size: 0.8rem;
+}
+
+.discover-control-panel {
+  position: sticky;
+  top: 74px;
+  z-index: 4;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--v5-border);
+  border-radius: 22px;
+  background: var(--v5-surface-strong);
+  box-shadow: var(--v5-shadow-md);
+  backdrop-filter: blur(24px);
+}
+
+.discover-control-panel__top,
+.discover-control-panel__bottom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.discover-control-panel__bottom {
+  flex-wrap: wrap;
+  padding-top: 10px;
+}
+
+.discover-search-v5 {
+  flex: 1 1 420px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: var(--v5-surface-soft);
+}
+
+.discover-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.discover-control-label {
+  color: var(--v5-text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.discover-page-size {
+  width: 82px;
+  padding: 0 9px;
+  border-radius: 12px;
+  background: var(--v5-surface-soft);
+}
+
+.discover-segment {
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--v5-surface-soft);
+}
+
+.discover-wanted-toggle-v5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--v5-text-muted);
+  font-size: 0.76rem;
+}
+
+.discover-window-note,
+.discover-refresh-strip {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(105, 183, 255, 0.2);
+  border-radius: 15px;
+  background: rgba(70, 152, 255, 0.08);
+  color: var(--v5-text-muted);
+  font-size: 0.82rem;
 }
 
-.discover-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.discover-stat-card,
-.discover-toolbar {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.discover-toolbar-content {
+.discover-window-note > div {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px;
 }
 
-.discover-search {
-  width: min(420px, 100%);
-  flex: 1 1 300px;
+.v5-banner {
+  margin-top: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--v5-border);
 }
 
-.discover-toolbar-separator {
-  min-height: 42px;
+.v5-banner--info {
+  background: rgba(70, 152, 255, 0.11);
 }
 
-.discover-wanted-toggle {
-  min-width: 260px;
+.v5-banner--warning {
+  background: rgba(255, 174, 64, 0.12);
 }
 
-.discover-loading,
-.discover-empty {
-  min-height: 360px;
+.discover-results-header {
   display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 30px 2px 14px;
+}
+
+.discover-results-title {
+  font-size: 1.4rem;
+  font-weight: 780;
+}
+
+.discover-results-subtitle {
+  margin-top: 4px;
+  color: var(--v5-text-muted);
+  font-size: 0.82rem;
+}
+
+.discover-results-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.discover-grid-v5,
+.discover-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 18px;
+}
+
+.discover-card-v5,
+.discover-skeleton-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--v5-border);
+  border-radius: 22px;
+  background: var(--v5-surface);
+  box-shadow: var(--v5-shadow-sm);
+}
+
+.discover-card-v5 {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.discover-card-v5:hover {
+  transform: translateY(-5px);
+  border-color: rgba(255, 92, 119, 0.34);
+  box-shadow: var(--v5-shadow-lg);
+}
+
+.discover-card-v5__poster {
+  position: relative;
+  overflow: hidden;
+}
+
+.discover-card-v5__poster .q-card,
+.discover-card-v5__poster .media-poster {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.discover-card-v5__badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.discover-reason-badge,
+.discover-source-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 27px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 760;
+  backdrop-filter: blur(16px);
+}
+
+.discover-reason-badge--missing {
+  background: rgba(227, 55, 91, 0.82);
+}
+
+.discover-reason-badge--upgrade {
+  background: rgba(35, 166, 105, 0.84);
+}
+
+.discover-source-count {
+  margin-left: auto;
+  background: rgba(15, 21, 34, 0.78);
+}
+
+.discover-card-v5__details {
+  padding: 13px 14px 15px;
+}
+
+.discover-card-v5__identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--v5-text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-card-v5__source {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.discover-card-v5__source-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-card-v5__quality {
+  flex: 0 0 auto;
+  color: var(--v5-text-muted);
+  font-size: 0.72rem;
+}
+
+.discover-online-dot {
+  flex: 0 0 8px;
+}
+
+.discover-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 28px;
+  padding: 14px 16px;
+  border: 1px solid var(--v5-border);
+  border-radius: 18px;
+  background: var(--v5-surface);
+}
+
+.discover-pagination__summary {
+  color: var(--v5-text-muted);
+  font-size: 0.82rem;
+}
+
+.discover-empty-v5 {
+  display: flex;
+  min-height: 380px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
 }
 
-.discover-empty {
-  max-width: 620px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.discover-refreshing {
-  display: flex;
-  align-items: center;
-}
-
-.discover-grid {
+.discover-empty-v5__icon {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(232px, 232px));
-  justify-content: center;
-  gap: 20px 12px;
+  width: 92px;
+  height: 92px;
+  place-items: center;
+  border: 1px solid rgba(93, 230, 162, 0.24);
+  border-radius: 30px;
+  background: rgba(93, 230, 162, 0.08);
+  color: #5de6a2;
 }
 
-.discover-item {
-  width: 232px;
-  min-width: 232px;
+.discover-empty-v5__title {
+  margin-top: 22px;
+  font-size: 1.45rem;
+  font-weight: 800;
 }
 
-.discover-reason-row {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 0 12px;
+.discover-empty-v5__copy {
+  max-width: 560px;
+  margin-top: 8px;
+  color: var(--v5-text-muted);
 }
 
-.discover-source {
-  padding: 4px 16px 0;
-  overflow: hidden;
+.discover-skeleton-grid {
+  margin-top: 28px;
 }
 
-.discover-source-line {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.discover-skeleton-card {
+  padding-bottom: 14px;
 }
 
-@media (max-width: 900px) {
-  .discover-stats {
+.discover-skeleton-poster {
+  aspect-ratio: 2 / 3;
+  height: auto !important;
+  border-radius: 0;
+}
+
+.discover-skeleton-card .q-skeleton:not(.discover-skeleton-poster) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+
+@media (max-width: 1100px) {
+  .discover-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .discover-wanted-toggle-v5 {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 
-@media (max-width: 700px) {
-  .discover-page {
-    padding: 16px;
+@media (max-width: 760px) {
+  .discover-page-v5 {
+    padding: 14px 12px 38px;
   }
 
-  .discover-header {
+  .discover-hero {
+    grid-template-columns: 1fr;
+    padding: 26px 22px;
+    border-radius: 24px;
+  }
+
+  .discover-hero__actions {
+    justify-content: flex-start;
+  }
+
+  .discover-title {
+    font-size: clamp(2rem, 12vw, 3rem);
+  }
+
+  .discover-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .discover-control-panel {
+    position: relative;
+    top: auto;
+  }
+
+  .discover-control-panel__top,
+  .discover-control-panel__bottom,
+  .discover-results-header,
+  .discover-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .discover-view-controls {
+    justify-content: space-between;
+    padding-left: 0;
+  }
+
+  .discover-results-badges {
+    justify-content: flex-start;
+  }
+
+  .discover-grid-v5,
+  .discover-skeleton-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .discover-window-note {
     align-items: flex-start;
+    flex-direction: column;
   }
+}
 
-  .discover-stats {
+@media (max-width: 470px) {
+  .discover-metrics {
     grid-template-columns: 1fr;
   }
 
-  .discover-toolbar-content {
-    align-items: stretch;
+  .discover-grid-v5,
+  .discover-skeleton-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discover-card-v5 {
+    transition: none;
   }
 
-  .discover-toolbar-separator {
-    display: none;
+  .discover-card-v5:hover {
+    transform: none;
   }
 }
 </style>

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Mime;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -47,16 +49,21 @@ public sealed class GetPlexMediaThumbnailImageEndpoint : Endpoint<GetPlexMediaTh
     private readonly IReaparrDbContext _dbContext;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
-
+    private readonly IPathProvider _pathProvider;
     private static readonly TimeSpan _tokenCacheDuration = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan _connectionCacheDuration = TimeSpan.FromMinutes(5);
 
+    // Discover V4 shared disk poster cache.
+    private static readonly TimeSpan _diskPosterCacheDuration = TimeSpan.FromDays(30);
+    private const long MaxDiskPosterCacheBytes = 2L * 1024L * 1024L * 1024L;
+    private static int _diskCacheWrites;
     public GetPlexMediaThumbnailImageEndpoint(
         ILogger log,
         IAppRuntimeInfo appRuntimeInfo,
         IReaparrDbContext dbContext,
         IHttpClientFactory httpClientFactory,
-        IMemoryCache cache
+        IMemoryCache cache,
+        IPathProvider pathProvider
     )
     {
         _log = log.ForContext<GetPlexMediaThumbnailImageEndpoint>();
@@ -64,6 +71,7 @@ public sealed class GetPlexMediaThumbnailImageEndpoint : Endpoint<GetPlexMediaTh
         _dbContext = dbContext;
         _httpClientFactory = httpClientFactory;
         _cache = cache;
+        _pathProvider = pathProvider;
     }
 
     public override void Configure()
@@ -117,6 +125,13 @@ public sealed class GetPlexMediaThumbnailImageEndpoint : Endpoint<GetPlexMediaTh
             HttpContext.Response.StatusCode = StatusCodes.Status304NotModified;
             return;
         }
+
+        var diskCachePaths = GetDiskPosterCachePaths(req);
+
+        if (await TryServeDiskPosterCacheAsync(diskCachePaths, ct))
+
+            return;
+
 
         var plexServerId = req.PlexServerId;
 
@@ -200,18 +215,7 @@ public sealed class GetPlexMediaThumbnailImageEndpoint : Endpoint<GetPlexMediaTh
             }
 
             var contentType = response.Content.Headers.ContentType?.ToString() ?? "image/jpeg";
-            var contentLength = response.Content.Headers.ContentLength;
-
-            if (contentLength.HasValue)
-            {
-                HttpContext.Response.ContentLength = contentLength.Value;
-            }
-
-            HttpContext.Response.ContentType = contentType;
-
-            // Stream directly to response without buffering
-            await using var stream = await response.Content.ReadAsStreamAsync(ct);
-            await stream.CopyToAsync(HttpContext.Response.Body, ct);
+            await CacheAndServeDiskPosterAsync(response.Content, contentType, diskCachePaths, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -267,6 +271,196 @@ public sealed class GetPlexMediaThumbnailImageEndpoint : Endpoint<GetPlexMediaTh
                     ex.Message
                 );
             await Send.FluentResult(Result.Fail("Network error while fetching image").Add502BadGatewayError(), ct);
+        }
+    }
+
+    private sealed record DiskPosterCachePaths(string ImagePath, string MimePath);
+
+    private DiskPosterCachePaths GetDiskPosterCachePaths(
+        GetPlexMediaThumbnailImageEndpointRequest req
+    )
+    {
+        var directory = DiscoverPerformanceCachePaths.GetPosterDirectory(_pathProvider);
+        var rawKey =
+            $"{req.PlexServerId}:{req.PlexKey}:{req.MetaDataKey}:{req.Width}x{req.Height}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(rawKey));
+        var fileName = Convert.ToHexString(hash).ToLowerInvariant();
+
+        return new DiskPosterCachePaths(
+            Path.Combine(directory, fileName + ".img"),
+            Path.Combine(directory, fileName + ".mime")
+        );
+    }
+
+    private async Task<bool> TryServeDiskPosterCacheAsync(
+        DiskPosterCachePaths paths,
+        CancellationToken ct
+    )
+    {
+        if (!File.Exists(paths.ImagePath))
+            return false;
+
+        try
+        {
+            var info = new FileInfo(paths.ImagePath);
+            if (DateTime.UtcNow - info.LastWriteTimeUtc > _diskPosterCacheDuration)
+            {
+                TryDeletePosterCacheFiles(paths);
+                return false;
+            }
+
+            var contentType = File.Exists(paths.MimePath)
+                ? await File.ReadAllTextAsync(paths.MimePath, ct)
+                : "image/jpeg";
+
+            HttpContext.Response.ContentType = string.IsNullOrWhiteSpace(contentType)
+                ? "image/jpeg"
+                : contentType.Trim();
+            HttpContext.Response.ContentLength = info.Length;
+            HttpContext.Response.Headers["X-Reaparr-Image-Cache"] = "HIT";
+
+            try
+            {
+                File.SetLastAccessTimeUtc(paths.ImagePath, DateTime.UtcNow);
+            }
+            catch
+            {
+            }
+
+            await using var cached = new FileStream(
+                paths.ImagePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                64 * 1024,
+                useAsync: true
+            );
+            await cached.CopyToAsync(HttpContext.Response.Body, ct);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    private async Task CacheAndServeDiskPosterAsync(
+        HttpContent content,
+        string contentType,
+        DiskPosterCachePaths paths,
+        CancellationToken ct
+    )
+    {
+        var directory = Path.GetDirectoryName(paths.ImagePath)!;
+        Directory.CreateDirectory(directory);
+        var tempPath = paths.ImagePath + ".tmp-" + Guid.NewGuid().ToString("N");
+
+        try
+        {
+            await using (var source = await content.ReadAsStreamAsync(ct))
+            await using (var destination = new FileStream(
+                tempPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                64 * 1024,
+                useAsync: true
+            ))
+            {
+                await source.CopyToAsync(destination, ct);
+                await destination.FlushAsync(ct);
+            }
+
+            File.Move(tempPath, paths.ImagePath, overwrite: true);
+            await File.WriteAllTextAsync(paths.MimePath, contentType, ct);
+
+            var info = new FileInfo(paths.ImagePath);
+            HttpContext.Response.ContentType = contentType;
+            HttpContext.Response.ContentLength = info.Length;
+            HttpContext.Response.Headers["X-Reaparr-Image-Cache"] = "MISS";
+
+            await using var cached = new FileStream(
+                paths.ImagePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                64 * 1024,
+                useAsync: true
+            );
+            await cached.CopyToAsync(HttpContext.Response.Body, ct);
+
+            if (Interlocked.Increment(ref _diskCacheWrites) >= 25)
+            {
+                Interlocked.Exchange(ref _diskCacheWrites, 0);
+                await PruneDiskPosterCacheAsync(directory, ct);
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static async Task PruneDiskPosterCacheAsync(
+        string directory,
+        CancellationToken ct
+    )
+    {
+        if (!Directory.Exists(directory))
+            return;
+
+        var files = new DirectoryInfo(directory)
+            .EnumerateFiles("*.img")
+            .OrderBy(x => x.LastAccessTimeUtc)
+            .ToList();
+
+        var totalBytes = files.Sum(x => x.Length);
+        if (totalBytes <= MaxDiskPosterCacheBytes)
+            return;
+
+        foreach (var file in files)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (totalBytes <= MaxDiskPosterCacheBytes)
+                break;
+
+            var length = file.Length;
+            var paths = new DiskPosterCachePaths(
+                file.FullName,
+                Path.ChangeExtension(file.FullName, ".mime")
+            );
+
+            TryDeletePosterCacheFiles(paths);
+            totalBytes -= length;
+            await Task.Yield();
+        }
+    }
+
+    private static void TryDeletePosterCacheFiles(DiskPosterCachePaths paths)
+    {
+        try
+        {
+            if (File.Exists(paths.ImagePath))
+                File.Delete(paths.ImagePath);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (File.Exists(paths.MimePath))
+                File.Delete(paths.MimePath);
+        }
+        catch
+        {
         }
     }
 

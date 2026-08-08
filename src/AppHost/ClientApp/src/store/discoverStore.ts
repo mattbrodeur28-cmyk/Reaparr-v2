@@ -2,8 +2,8 @@ import Log from 'consola';
 import Axios from 'axios';
 import { acceptHMRUpdate, defineStore } from 'pinia';
 import { reactive, toRefs } from 'vue';
-import { concatMap, catchError, finalize, map, mergeMap, reduce, switchMap, tap } from 'rxjs/operators';
-import { forkJoin, from, type Observable, of, range } from 'rxjs';
+import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
+import { forkJoin, from, type Observable, of } from 'rxjs';
 import { cloneDeep } from 'lodash-es';
 import {
 	PlexMediaComparisonState,
@@ -12,16 +12,29 @@ import {
 	type PlexLibraryDTO,
 	type PlexMediaQualityDTO,
 	type PlexMediaSlimDTO,
-	type PlexMediaStatisticsDTO,
 } from '@dto';
-import { plexMediaApi } from '@api';
-import { getPlexMediaComparisonState } from '@composables';
 import { useLibraryStore, useServerStore, useSettingsStore } from '@store';
 import { getCachedValue, setCachedValue } from '@/utils/persistentCache';
+
+export type DiscoverIdentityBasis = 'tmdb' | 'tvdb' | 'imdb' | 'plex' | 'title-year';
+
+export interface IDiscoverMediaIdentity {
+	mediaId: number;
+	mediaType: PlexMediaType;
+	plexServerId: number;
+	plexLibraryId: number;
+	plexApiRatingKey: number;
+	plexGuid: string;
+	tmdbId?: number | null;
+	tvdbId?: number | null;
+	imdbId?: string | null;
+	tmdbEnriched: boolean;
+}
 
 export interface IDiscoverSource {
 	media: PlexMediaSlimDTO;
 	comparisonState: PlexMediaComparisonState;
+	identity?: IDiscoverMediaIdentity;
 }
 
 export interface IDiscoverItem {
@@ -31,6 +44,8 @@ export interface IDiscoverItem {
 	sources: IDiscoverSource[];
 	wantedByArr: boolean;
 	wantedBy: string[];
+	identityBasis: DiscoverIdentityBasis;
+	identityValue: string;
 }
 
 interface IDiscoverStoreState {
@@ -45,6 +60,15 @@ interface IDiscoverStoreState {
 	arrConfigured: boolean;
 	arrDataAvailable: boolean;
 	arrWarnings: string[];
+	identityWarnings: string[];
+	tmdbConfigured: boolean;
+	tmdbEnrichedCount: number;
+	serverCacheStatus: string;
+	serverSnapshotAgeSeconds: number;
+	serverBuildMilliseconds: number;
+	snapshotWarnings: string[];
+	serverHasMore: boolean;
+	serverItemLimit: number;
 }
 
 interface IDiscoverWantedItem {
@@ -52,6 +76,9 @@ interface IDiscoverWantedItem {
 	year: number;
 	mediaType: string;
 	source: string;
+	tmdbId?: number | null;
+	tvdbId?: number | null;
+	imdbId?: string | null;
 }
 
 interface IDiscoverWantedResponse {
@@ -61,24 +88,62 @@ interface IDiscoverWantedResponse {
 	warnings: string[];
 }
 
+interface IDiscoverIdentityResponse {
+	tmdbConfigured: boolean;
+	tmdbEnrichedCount: number;
+	items: IDiscoverMediaIdentity[];
+	warnings: string[];
+}
+
+interface IDiscoverMediaSnapshotSource {
+	media: PlexMediaSlimDTO;
+	comparisonState: PlexMediaComparisonState;
+}
+
+interface IDiscoverMediaSnapshotResponse {
+	cacheStatus: string;
+	isStale: boolean;
+	ageSeconds: number;
+	builtAtUtc: string;
+	buildMilliseconds: number;
+	queryCount: number;
+	hasMore: boolean;
+	itemLimitPerState: number;
+	sources: IDiscoverMediaSnapshotSource[];
+	warnings: string[];
+}
+
 interface IDiscoverFeedCache {
 	items: IDiscoverItem[];
 	arrDataAvailable: boolean;
 	arrWarnings: string[];
+	identityWarnings: string[];
+	tmdbConfigured: boolean;
+	tmdbEnrichedCount: number;
+	serverCacheStatus: string;
+	serverSnapshotAgeSeconds: number;
+	serverBuildMilliseconds: number;
+	snapshotWarnings: string[];
+	serverHasMore: boolean;
+	serverItemLimit: number;
 	integrationSignature: string;
 }
 
-const PAGE_SIZE = 100;
-const MAX_CONCURRENT_LIBRARY_QUERIES = 3;
-const DISCOVER_CACHE_KEY = 'discover-feed-v2';
-const DISCOVER_CACHE_TTL_MS = 30 * 60 * 1000;
+interface IIdentityDescriptor {
+	exactKeys: string[];
+	fallbackKey: string;
+	basis: DiscoverIdentityBasis;
+	value: string;
+}
 
-const DISCOVER_STATES: readonly PlexMediaComparisonState[] = [
-	PlexMediaComparisonState.Missing,
-	PlexMediaComparisonState.HigherQuality,
-	PlexMediaComparisonState.Partial,
-	PlexMediaComparisonState.PartialAndHigherQuality,
-];
+interface IGroupBucket {
+	id: string;
+	sources: IDiscoverSource[];
+	fallbackKey: string;
+}
+
+const DISCOVER_CACHE_KEY = 'discover-feed-v5';
+const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
 	[VideoQuality.Unknown]: 0,
@@ -106,6 +171,14 @@ const STATE_RANK: Record<PlexMediaComparisonState, number> = {
 	[PlexMediaComparisonState.PartialAndHigherQuality]: 4,
 };
 
+const IDENTITY_BASIS_RANK: Record<DiscoverIdentityBasis, number> = {
+	tmdb: 5,
+	tvdb: 5,
+	imdb: 4,
+	plex: 3,
+	'title-year': 1,
+};
+
 export const useDiscoverStore = defineStore('discoverStore', () => {
 	const defaultState: IDiscoverStoreState = {
 		items: [],
@@ -119,6 +192,15 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 		arrConfigured: false,
 		arrDataAvailable: false,
 		arrWarnings: [],
+		identityWarnings: [],
+		tmdbConfigured: false,
+		tmdbEnrichedCount: 0,
+		serverCacheStatus: '',
+		serverSnapshotAgeSeconds: 0,
+		serverBuildMilliseconds: 0,
+		snapshotWarnings: [],
+		serverHasMore: false,
+		serverItemLimit: 100,
 	};
 	const state = reactive<IDiscoverStoreState>(cloneDeep(defaultState));
 
@@ -127,9 +209,10 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 	const settingsStore = useSettingsStore();
 
 	const actions = {
-		initialize(): Observable<IDiscoverItem[]> {
+		initialize(initialItemLimit = 100): Observable<IDiscoverItem[]> {
 			state.arrConfigured = getters.isArrConfigured();
 			const integrationSignature = getters.getIntegrationSignature();
+			const requestedLimit = clampServerItemLimit(initialItemLimit);
 
 			return from(getCachedValue<IDiscoverFeedCache>(DISCOVER_CACHE_KEY, DISCOVER_CACHE_TTL_MS, true)).pipe(
 				switchMap((cached) => {
@@ -138,65 +221,78 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 						state.items = hydrateCachedItems(cached.value.items);
 						state.arrDataAvailable = cached.value.arrDataAvailable;
 						state.arrWarnings = cached.value.arrWarnings;
+						state.identityWarnings = cached.value.identityWarnings ?? [];
+						state.tmdbConfigured = cached.value.tmdbConfigured ?? false;
+						state.tmdbEnrichedCount = cached.value.tmdbEnrichedCount ?? 0;
+						state.serverCacheStatus = cached.value.serverCacheStatus ?? '';
+						state.serverSnapshotAgeSeconds = cached.value.serverSnapshotAgeSeconds ?? 0;
+						state.serverBuildMilliseconds = cached.value.serverBuildMilliseconds ?? 0;
+						state.snapshotWarnings = cached.value.snapshotWarnings ?? [];
+						state.serverHasMore = cached.value.serverHasMore ?? false;
+						state.serverItemLimit = cached.value.serverItemLimit ?? requestedLimit;
 						state.lastUpdatedAt = cached.cachedAt;
 						state.loadedFromCache = true;
 
-						if (cached.isFresh) {
+						if (cached.isFresh && state.serverItemLimit >= requestedLimit) {
 							return of(state.items);
 						}
 					}
 
-					return actions.refresh();
+					return actions.refresh(false, Math.max(requestedLimit, state.serverItemLimit));
 				}),
 			);
 		},
-		refresh(): Observable<IDiscoverItem[]> {
+		refresh(forceServerRefresh = true, requestedItemLimit = state.serverItemLimit): Observable<IDiscoverItem[]> {
 			state.loading = state.items.length === 0;
 			state.refreshing = true;
 			state.errorMessage = '';
 			state.completedQueries = 0;
+			state.totalQueries = 1;
 			state.arrWarnings = [];
+			state.identityWarnings = [];
+			state.snapshotWarnings = [];
 			state.arrConfigured = getters.isArrConfigured();
+			state.serverItemLimit = clampServerItemLimit(requestedItemLimit);
 
 			const remoteLibraries = getters.getRemoteDiscoverLibraries();
-			const queries = remoteLibraries.flatMap((library) =>
-				DISCOVER_STATES.map((comparisonState) => ({ library, comparisonState })),
-			);
-
-			state.totalQueries = queries.length;
-
-			const plexItems$ = queries.length === 0
-				? of([] as IDiscoverSource[])
-				: from(queries).pipe(
-						mergeMap(
-							({ library, comparisonState }) =>
-								loadLibraryComparisonState(library, comparisonState).pipe(
-									catchError((error) => {
-										Log.error('Discover query failed', {
-											libraryId: library.id,
-											comparisonState,
-											error,
-										});
-										state.errorMessage = 'Some Plex libraries could not be loaded. The results below may be incomplete.';
-										return of([] as IDiscoverSource[]);
-									}),
-									finalize(() => {
-										state.completedQueries++;
-									}),
-								),
-							MAX_CONCURRENT_LIBRARY_QUERIES,
-						),
-						reduce((allItems, queryItems) => allItems.concat(queryItems), [] as IDiscoverSource[]),
-					);
 
 			return forkJoin({
-				plexItems: plexItems$,
+				snapshot: loadMediaSnapshot(remoteLibraries, forceServerRefresh, state.serverItemLimit),
 				wanted: loadWantedItems(),
 			}).pipe(
-				map(({ plexItems, wanted }) => {
+				switchMap(({ snapshot, wanted }) => {
+					state.completedQueries = 1;
+					state.serverCacheStatus = snapshot.cacheStatus;
+					state.serverSnapshotAgeSeconds = snapshot.ageSeconds;
+					state.serverBuildMilliseconds = snapshot.buildMilliseconds;
+					state.snapshotWarnings = snapshot.warnings ?? [];
+					state.serverHasMore = snapshot.hasMore;
+					state.serverItemLimit = snapshot.itemLimitPerState || state.serverItemLimit;
+
+					const plexItems: IDiscoverSource[] = snapshot.sources.map((source) => ({
+						media: source.media,
+						comparisonState: source.comparisonState,
+					}));
+
+					return loadIdentities(plexItems).pipe(
+						map((identity) => ({ plexItems, wanted, identity, snapshot })),
+					);
+				}),
+				map(({ plexItems, wanted, identity, snapshot }) => {
 					state.arrDataAvailable = wanted.available;
 					state.arrWarnings = wanted.response.warnings ?? [];
-					return groupDiscoverItems(plexItems, wanted.response.items ?? []);
+					state.identityWarnings = identity.response.warnings ?? [];
+					state.tmdbConfigured = identity.response.tmdbConfigured;
+					state.tmdbEnrichedCount = identity.response.tmdbEnrichedCount;
+
+					const enrichedSources = attachIdentities(plexItems, identity.response.items);
+					const grouped = groupDiscoverItems(enrichedSources, wanted.response.items ?? []);
+
+					if (snapshot.isStale && !forceServerRefresh) {
+						queueBackgroundSnapshotRefresh();
+					}
+
+					return grouped;
 				}),
 				map((items) => items.sort(sortDiscoverItems)),
 				tap((items) => {
@@ -208,6 +304,15 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 						items,
 						arrDataAvailable: state.arrDataAvailable,
 						arrWarnings: [...state.arrWarnings],
+						identityWarnings: [...state.identityWarnings],
+						tmdbConfigured: state.tmdbConfigured,
+						tmdbEnrichedCount: state.tmdbEnrichedCount,
+						serverCacheStatus: state.serverCacheStatus,
+						serverSnapshotAgeSeconds: state.serverSnapshotAgeSeconds,
+						serverBuildMilliseconds: state.serverBuildMilliseconds,
+						snapshotWarnings: [...state.snapshotWarnings],
+						serverHasMore: state.serverHasMore,
+						serverItemLimit: state.serverItemLimit,
 						integrationSignature: getters.getIntegrationSignature(),
 					});
 				}),
@@ -216,6 +321,22 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 					state.refreshing = false;
 				}),
 			);
+		},
+		loadMore(additionalItems = 100): Observable<IDiscoverItem[]> {
+			const nextLimit = clampServerItemLimit(state.serverItemLimit + additionalItems);
+			if (nextLimit <= state.serverItemLimit || !state.serverHasMore) {
+				return of(state.items);
+			}
+
+			return actions.refresh(false, nextLimit);
+		},
+		ensureItemLimit(itemLimit: number): Observable<IDiscoverItem[]> {
+			const nextLimit = clampServerItemLimit(itemLimit);
+			if (nextLimit <= state.serverItemLimit) {
+				return of(state.items);
+			}
+
+			return actions.refresh(false, nextLimit);
 		},
 		selectBestSource(
 			item: IDiscoverItem,
@@ -242,56 +363,69 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 		},
 	};
 
-	function requestPage(
-		library: PlexLibraryDTO,
-		comparisonState: PlexMediaComparisonState,
-		page: number,
-	): Observable<PlexMediaStatisticsDTO | null> {
-		return plexMediaApi.getAllMediaByTypeEndpoint({
-			page,
-			size: PAGE_SIZE,
-			comparisonState,
-			mediaType: library.type,
-			plexLibraryId: library.id,
-			filterOwnedMedia: false,
-			filterOfflineMedia: false,
-		}).pipe(
-			map(({ isSuccess, value }) => isSuccess && value ? value : null),
-		);
-	}
+	let backgroundSnapshotRefreshQueued = false;
 
-	function loadLibraryComparisonState(
-		library: PlexLibraryDTO,
-		comparisonState: PlexMediaComparisonState,
-	): Observable<IDiscoverSource[]> {
-		return requestPage(library, comparisonState, 1).pipe(
-			switchMap((firstPage) => {
-				if (!firstPage) {
-					return of([] as IDiscoverSource[]);
-				}
-
-				const firstItems = toDiscoverSources(firstPage.mediaList, comparisonState);
-				const totalPages = Math.max(1, Math.ceil(firstPage.totalCount / PAGE_SIZE));
-				if (totalPages === 1) {
-					return of(firstItems);
-				}
-
-				return range(2, totalPages - 1).pipe(
-					concatMap((page) => requestPage(library, comparisonState, page)),
-					map((pageData) => pageData ? toDiscoverSources(pageData.mediaList, comparisonState) : []),
-					reduce((items, pageItems) => items.concat(pageItems), firstItems),
-				);
+	function loadMediaSnapshot(
+		libraries: PlexLibraryDTO[],
+		forceRefresh: boolean,
+		itemLimitPerState: number,
+	): Observable<IDiscoverMediaSnapshotResponse> {
+		return from(Axios.post<IDiscoverMediaSnapshotResponse>(
+			'/api/Integration/Discover/MediaSnapshot',
+			{
+				libraries: libraries.map((library) => ({
+					plexLibraryId: library.id,
+					mediaType: library.type,
+				})),
+				forceRefresh,
+				itemLimitPerState: clampServerItemLimit(itemLimitPerState),
+			},
+		)).pipe(
+			map((response) => response.data),
+			catchError((error) => {
+				Log.error('Failed to load Discover server snapshot', error);
+				state.errorMessage = 'The fast Discover snapshot could not be loaded.';
+				return of({
+					cacheStatus: 'Error',
+					isStale: false,
+					ageSeconds: 0,
+					builtAtUtc: new Date().toISOString(),
+					buildMilliseconds: 0,
+					queryCount: 0,
+					hasMore: false,
+					itemLimitPerState: clampServerItemLimit(itemLimitPerState),
+					sources: [],
+					warnings: ['Discover server snapshot is unavailable.'],
+				} satisfies IDiscoverMediaSnapshotResponse);
 			}),
 		);
 	}
 
-	function toDiscoverSources(
-		mediaList: PlexMediaSlimDTO[],
-		requestedState: PlexMediaComparisonState,
-	): IDiscoverSource[] {
-		return mediaList
-			.filter((media) => getPlexMediaComparisonState(media) === requestedState)
-			.map((media) => ({ media, comparisonState: requestedState }));
+	function clampServerItemLimit(value: number): number {
+		if (!Number.isFinite(value)) {
+			return 100;
+		}
+
+		return Math.min(2000, Math.max(25, Math.round(value)));
+	}
+
+	function queueBackgroundSnapshotRefresh() {
+		if (backgroundSnapshotRefreshQueued) {
+			return;
+		}
+
+		backgroundSnapshotRefreshQueued = true;
+		setTimeout(() => {
+			actions.refresh(true, state.serverItemLimit)
+				.pipe(finalize(() => {
+					backgroundSnapshotRefreshQueued = false;
+				}))
+				.subscribe({
+					error: (error) => {
+						Log.debug('Background Discover snapshot refresh failed', error);
+					},
+				});
+		}, 0);
 	}
 
 	function loadWantedItems(): Observable<{
@@ -332,37 +466,311 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 		);
 	}
 
+	function loadIdentities(sources: IDiscoverSource[]): Observable<{
+		available: boolean;
+		response: IDiscoverIdentityResponse;
+	}> {
+		const requestMap = new Map<string, { mediaId: number; mediaType: PlexMediaType }>();
+		for (const source of sources) {
+			requestMap.set(
+				`${source.media.type}:${source.media.id}`,
+				{ mediaId: source.media.id, mediaType: source.media.type },
+			);
+		}
+		const requestItems = [...requestMap.values()];
+
+		if (requestItems.length === 0) {
+			return of({
+				available: true,
+				response: {
+					tmdbConfigured: false,
+					tmdbEnrichedCount: 0,
+					items: [],
+					warnings: [],
+				},
+			});
+		}
+
+		return from(Axios.post<IDiscoverIdentityResponse>('/api/Integration/Discover/Identity', {
+			items: requestItems,
+			enrichWithTmdb: true,
+		})).pipe(
+			map((response) => ({
+				available: true,
+				response: response.data,
+			})),
+			catchError((error) => {
+				Log.warn('Failed to load canonical Discover identities', error);
+				return of({
+					available: false,
+					response: {
+						tmdbConfigured: false,
+						tmdbEnrichedCount: 0,
+						items: [],
+						warnings: ['Canonical identity lookup is unavailable. Discover is using title + year fallback matching.'],
+					},
+				});
+			}),
+		);
+	}
+
+	function attachIdentities(
+		sources: IDiscoverSource[],
+		identities: IDiscoverMediaIdentity[],
+	): IDiscoverSource[] {
+		const byMedia = new Map(
+			identities.map((identity) => [
+				`${identity.mediaType}:${identity.mediaId}`,
+				identity,
+			]),
+		);
+
+		return sources.map((source) => ({
+			...source,
+			identity: byMedia.get(`${source.media.type}:${source.media.id}`),
+		}));
+	}
+
 	function groupDiscoverItems(
 		sources: IDiscoverSource[],
 		wantedItems: IDiscoverWantedItem[],
 	): IDiscoverItem[] {
-		const grouped = new Map<string, IDiscoverSource[]>();
+		const sortedSources = [...sources].sort((a, b) =>
+			getIdentityConfidence(b) - getIdentityConfidence(a),
+		);
 
-		for (const source of sources) {
-			const key = getMediaIdentityKey(source.media);
-			const existing = grouped.get(key) ?? [];
-			existing.push(source);
-			grouped.set(key, existing);
+		const groups = new Map<string, IGroupBucket>();
+		const exactKeyToGroup = new Map<string, string>();
+		const fallbackKeyToGroup = new Map<string, string | null>();
+		let groupCounter = 0;
+
+		for (const source of sortedSources) {
+			const descriptor = describeIdentity(source);
+			let groupId: string | undefined;
+
+			for (const exactKey of descriptor.exactKeys) {
+				const existing = exactKeyToGroup.get(exactKey);
+				if (existing) {
+					groupId = existing;
+					break;
+				}
+			}
+
+			if (!groupId && descriptor.exactKeys.length === 0) {
+				const fallbackMatch = fallbackKeyToGroup.get(descriptor.fallbackKey);
+				if (fallbackMatch) {
+					groupId = fallbackMatch;
+				}
+			}
+
+			if (!groupId) {
+				groupId = `group-${groupCounter++}`;
+				groups.set(groupId, {
+					id: groupId,
+					sources: [],
+					fallbackKey: descriptor.fallbackKey,
+				});
+
+				const existingFallback = fallbackKeyToGroup.get(descriptor.fallbackKey);
+				if (existingFallback === undefined) {
+					fallbackKeyToGroup.set(descriptor.fallbackKey, groupId);
+				} else if (existingFallback !== groupId) {
+					fallbackKeyToGroup.set(descriptor.fallbackKey, null);
+				}
+			}
+
+			const group = groups.get(groupId);
+			if (!group) {
+				continue;
+			}
+
+			group.sources.push(source);
+
+			for (const exactKey of descriptor.exactKeys) {
+				exactKeyToGroup.set(exactKey, groupId);
+			}
 		}
 
-		return [...grouped.entries()].flatMap(([key, groupedSources]) => {
-			const fallback = groupedSources[0];
+		return [...groups.values()].flatMap((group) => {
+			const fallback = group.sources[0];
 			if (!fallback) {
 				return [];
 			}
 
-			const best = selectBestSource(groupedSources, [], false) ?? fallback;
-			const wantedBy = getWantedBy(best.media, wantedItems);
+			const best = selectBestSource(group.sources, [], false) ?? fallback;
+			const descriptor = describeIdentity(best);
+			const strongest = getStrongestGroupIdentity(group.sources) ?? descriptor;
+			const wantedBy = getWantedBy(group.sources, wantedItems);
 
 			return [{
-				key,
+				key: strongest.exactKeys[0] ?? strongest.fallbackKey,
 				media: best.media,
-				comparisonState: getAggregateComparisonState(groupedSources),
-				sources: groupedSources,
+				comparisonState: getAggregateComparisonState(group.sources),
+				sources: group.sources,
 				wantedByArr: wantedBy.length > 0,
 				wantedBy,
+				identityBasis: strongest.basis,
+				identityValue: strongest.value,
 			}];
 		});
+	}
+
+	function getStrongestGroupIdentity(sources: IDiscoverSource[]): IIdentityDescriptor | null {
+		const descriptors = sources
+			.map(describeIdentity)
+			.sort((a, b) => IDENTITY_BASIS_RANK[b.basis] - IDENTITY_BASIS_RANK[a.basis]);
+
+		return descriptors[0] ?? null;
+	}
+
+	function getIdentityConfidence(source: IDiscoverSource): number {
+		return IDENTITY_BASIS_RANK[describeIdentity(source).basis];
+	}
+
+	function describeIdentity(source: IDiscoverSource): IIdentityDescriptor {
+		const media = source.media;
+		const identity = source.identity;
+		const fallbackKey = getFallbackIdentityKey(media);
+		const exactKeys: string[] = [];
+
+		if (media.type === PlexMediaType.Movie) {
+			if (identity?.tmdbId) {
+				exactKeys.push(`movie:tmdb:${identity.tmdbId}`);
+			}
+			if (identity?.imdbId) {
+				exactKeys.push(`movie:imdb:${normalizeExternalId(identity.imdbId)}`);
+			}
+			if (identity?.plexGuid) {
+				exactKeys.push(`movie:plex:${identity.plexGuid.trim().toLocaleLowerCase()}`);
+			}
+
+			if (identity?.tmdbId) {
+				return {
+					exactKeys,
+					fallbackKey,
+					basis: 'tmdb',
+					value: identity.tmdbId.toString(),
+				};
+			}
+			if (identity?.imdbId) {
+				return {
+					exactKeys,
+					fallbackKey,
+					basis: 'imdb',
+					value: identity.imdbId,
+				};
+			}
+		} else if (media.type === PlexMediaType.TvShow) {
+			if (identity?.tvdbId) {
+				exactKeys.push(`tv:tvdb:${identity.tvdbId}`);
+			}
+			if (identity?.tmdbId) {
+				exactKeys.push(`tv:tmdb:${identity.tmdbId}`);
+			}
+			if (identity?.imdbId) {
+				exactKeys.push(`tv:imdb:${normalizeExternalId(identity.imdbId)}`);
+			}
+			if (identity?.plexGuid) {
+				exactKeys.push(`tv:plex:${identity.plexGuid.trim().toLocaleLowerCase()}`);
+			}
+
+			if (identity?.tvdbId) {
+				return {
+					exactKeys,
+					fallbackKey,
+					basis: 'tvdb',
+					value: identity.tvdbId.toString(),
+				};
+			}
+			if (identity?.tmdbId) {
+				return {
+					exactKeys,
+					fallbackKey,
+					basis: 'tmdb',
+					value: identity.tmdbId.toString(),
+				};
+			}
+			if (identity?.imdbId) {
+				return {
+					exactKeys,
+					fallbackKey,
+					basis: 'imdb',
+					value: identity.imdbId,
+				};
+			}
+		}
+
+		if (identity?.plexGuid) {
+			return {
+				exactKeys,
+				fallbackKey,
+				basis: 'plex',
+				value: 'Plex GUID',
+			};
+		}
+
+		return {
+			exactKeys: [],
+			fallbackKey,
+			basis: 'title-year',
+			value: `${media.title} (${media.year || 'unknown'})`,
+		};
+	}
+
+	function getWantedBy(
+		sources: IDiscoverSource[],
+		wantedItems: IDiscoverWantedItem[],
+	): string[] {
+		const sourcesByStrength = [...sources].sort((a, b) =>
+			getIdentityConfidence(b) - getIdentityConfidence(a),
+		);
+
+		const matched = wantedItems.filter((wanted) =>
+			sourcesByStrength.some((source) => isWantedMatch(source, wanted)),
+		);
+
+		return [...new Set(matched.map((wanted) => wanted.source))];
+	}
+
+	function isWantedMatch(source: IDiscoverSource, wanted: IDiscoverWantedItem): boolean {
+		const media = source.media;
+		const identity = source.identity;
+		const wantedType = wanted.mediaType === 'Movie' ? PlexMediaType.Movie : PlexMediaType.TvShow;
+
+		if (media.type !== wantedType) {
+			return false;
+		}
+
+		if (media.type === PlexMediaType.Movie) {
+			if (identity?.tmdbId && wanted.tmdbId) {
+				return identity.tmdbId === wanted.tmdbId;
+			}
+			if (identity?.imdbId && wanted.imdbId) {
+				return normalizeExternalId(identity.imdbId) === normalizeExternalId(wanted.imdbId);
+			}
+		} else {
+			if (identity?.tvdbId && wanted.tvdbId) {
+				return identity.tvdbId === wanted.tvdbId;
+			}
+			if (identity?.tmdbId && wanted.tmdbId) {
+				return identity.tmdbId === wanted.tmdbId;
+			}
+			if (identity?.imdbId && wanted.imdbId) {
+				return normalizeExternalId(identity.imdbId) === normalizeExternalId(wanted.imdbId);
+			}
+		}
+
+		const sharedTmdbNamespace = Boolean(identity?.tmdbId && wanted.tmdbId);
+		const sharedTvdbNamespace = Boolean(identity?.tvdbId && wanted.tvdbId);
+		const sharedImdbNamespace = Boolean(identity?.imdbId && wanted.imdbId);
+
+		if (sharedTmdbNamespace || sharedTvdbNamespace || sharedImdbNamespace) {
+			return false;
+		}
+
+		const normalizedTitle = normalizeTitle(media.searchTitle || media.title);
+		return normalizeTitle(wanted.title) === normalizedTitle
+			&& (wanted.year <= 0 || media.year <= 0 || wanted.year === media.year);
 	}
 
 	function hydrateCachedItems(items: IDiscoverItem[]): IDiscoverItem[] {
@@ -448,33 +856,17 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 			?.comparisonState ?? PlexMediaComparisonState.Unknown;
 	}
 
-	function getWantedBy(media: PlexMediaSlimDTO, wantedItems: IDiscoverWantedItem[]): string[] {
-		const normalizedTitle = normalizeTitle(media.searchTitle || media.title);
-		const mediaType = media.type === PlexMediaType.Movie ? 'Movie' : 'TvShow';
-
-		return [...new Set(
-			wantedItems
-				.filter((wanted) => {
-					if (wanted.mediaType !== mediaType) {
-						return false;
-					}
-
-					if (normalizeTitle(wanted.title) !== normalizedTitle) {
-						return false;
-					}
-
-					return wanted.year <= 0 || media.year <= 0 || wanted.year === media.year;
-				})
-				.map((wanted) => wanted.source),
-		)];
-	}
-
-	function getMediaIdentityKey(media: PlexMediaSlimDTO): string {
+	function getFallbackIdentityKey(media: PlexMediaSlimDTO): string {
 		return [
 			media.type,
+			'title',
 			normalizeTitle(media.searchTitle || media.title),
 			media.year || 0,
 		].join(':');
+	}
+
+	function normalizeExternalId(value: string): string {
+		return value.trim().toLocaleLowerCase();
 	}
 
 	function normalizeTitle(value: string): string {
@@ -519,6 +911,7 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 			const radarr = settingsStore.integrationsSettings.radarr;
 			const sonarr = settingsStore.integrationsSettings.sonarr;
 			return [
+				'v5',
 				`radarr:${radarr.isConfigured}:${radarr.radarrBaseUrl || ''}`,
 				`sonarr:${sonarr.isConfigured}:${sonarr.sonarrBaseUrl || ''}`,
 			].join('|');
