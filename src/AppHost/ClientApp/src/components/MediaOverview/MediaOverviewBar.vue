@@ -152,6 +152,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useQuasar } from 'quasar';
 import type { PlexMediaDTO } from '@dto';
 import { ViewMode } from '@dto';
 import { SortDirection } from '@enums';
@@ -159,6 +160,7 @@ import type { IMediaOverviewBarActions, IViewOptions } from '@interfaces';
 import { useMediaOverviewBarDownloadCommandBus, useMediaOverviewStore, useSettingsStore } from '#imports';
 
 const mediaOverviewStore = useMediaOverviewStore();
+const $q = useQuasar();
 const downloadCommandBus = useMediaOverviewBarDownloadCommandBus();
 
 const settingsStore = useSettingsStore();
@@ -176,8 +178,8 @@ defineEmits<{
 	(e: 'action', payload: IMediaOverviewBarActions): void;
 }>();
 
-const barHeight = ref(85);
-const verticalButtonWidth = ref(120);
+const barHeight = computed(() => $q.screen.lt.sm ? 62 : 85);
+const verticalButtonWidth = computed(() => $q.screen.lt.sm ? 78 : 120);
 
 function isSelected(viewMode: ViewMode) {
 	return mediaOverviewStore.getMediaViewMode === viewMode;
@@ -221,5 +223,52 @@ function changeView(viewMode: ViewMode) {
 
 .q-fab__label {
   max-height: none;
+}
+
+/* V7.5 mobile MediaOverview toolbar */
+@media (max-width: 700px) {
+  .media-overview-bar {
+    box-sizing: border-box;
+    height: auto !important;
+    min-height: 0;
+    flex-wrap: wrap;
+    align-items: stretch;
+    row-gap: 6px;
+    padding: 8px 6px 7px;
+  }
+
+  .media-overview-bar > .q-toolbar__title {
+    width: 100%;
+    min-width: 0;
+    flex: 1 0 100%;
+    padding: 0;
+  }
+
+  .media-overview-bar > .q-toolbar__title > .row,
+  .media-overview-bar > .q-toolbar__title .row {
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  .media-overview-bar > .q-toolbar__title .q-item {
+    min-height: 54px;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+
+  .media-overview-bar > .q-toolbar__title .q-item__section {
+    min-width: 0;
+  }
+
+  .media-overview-bar > .q-toolbar__title .q-item__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .media-overview-bar > .q-btn {
+    min-width: 0;
+    flex: 1 1 0;
+  }
 }
 </style>

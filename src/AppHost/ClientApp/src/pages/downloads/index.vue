@@ -1,5 +1,5 @@
 <template>
-	<QPage class="v7-page">
+	<QPage class="v7-page v75-downloads-page">
 		<section class="v7-page-hero v7-page-hero--downloads">
 			<div>
 				<div class="v7-page-kicker">
@@ -28,7 +28,7 @@
 
 		<section
 			v-if="downloadStore.getServersWithDownloads.length > 0"
-			class="v7-page-content">
+			class="v7-page-content v75-downloads-content">
 			<div class="v7-section-heading">
 				<div>
 					<div class="v7-section-eyebrow">
@@ -44,18 +44,16 @@
 				</div>
 			</div>
 
-			<QScroll class="page-content-minus-download-bar v7-download-scroll">
-				<div class="v7-download-groups">
-					<div
-						v-for="{ plexServer, downloads } in downloadStore.getServersWithDownloads"
-						:key="plexServer.id"
-						class="v7-download-group">
-						<DownloadsTable
-							:download-rows="downloads"
-							:plex-server="plexServer" />
-					</div>
+			<div class="v7-download-groups v75-download-groups">
+				<div
+					v-for="{ plexServer, downloads } in downloadStore.getServersWithDownloads"
+					:key="plexServer.id"
+					class="v7-download-group v75-download-group">
+					<DownloadsTable
+						:download-rows="downloads"
+						:plex-server="plexServer" />
 				</div>
-			</QScroll>
+			</div>
 
 			<DownloadDetailsDialog />
 		</section>
@@ -89,3 +87,42 @@ import { useDownloadStore } from '@store';
 
 const downloadStore = useDownloadStore();
 </script>
+
+<style lang="scss">
+.v75-downloads-page,
+.v75-downloads-content {
+  min-height: 0;
+}
+
+.v75-download-groups {
+  display: grid;
+  min-height: 1px;
+  gap: 14px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+.v75-download-group {
+  min-width: 0;
+  overflow: visible;
+}
+
+/*
+ * V7 used QScroll here. Without an explicit calculated height Safari could
+ * collapse the scroll viewport to 0px even while the store contained rows.
+ * V7.5 deliberately uses the page's native scroll instead.
+ */
+.v75-download-group .q-table__container {
+  width: 100%;
+  min-height: 1px;
+}
+
+@media (max-width: 760px) {
+  .v75-downloads-content {
+    margin-top: 12px;
+  }
+
+  .v75-download-groups {
+    gap: 10px;
+  }
+}
+</style>

@@ -105,19 +105,33 @@ function openUpdateDialog(): void {
 
 <style lang="scss">
 .v5-app-bar {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 14px 0;
   background: transparent !important;
   box-shadow: none !important;
+  pointer-events: none;
 }
 
 .v5-app-toolbar {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   min-height: 66px;
-  margin: 10px 14px 0;
+  margin: 0;
   padding: 0 12px;
+  overflow: hidden;
   border: 1px solid var(--v5-border);
   border-radius: 20px;
   background: var(--v5-surface-strong) !important;
   box-shadow: var(--v5-shadow-md);
   backdrop-filter: blur(24px) saturate(145%);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  pointer-events: auto;
+}
+
+.v5-app-toolbar > * {
+  min-width: 0;
 }
 
 .v5-app-icon-button,
@@ -137,6 +151,7 @@ function openUpdateDialog(): void {
 }
 
 .v5-app-brand {
+  min-width: 0;
   min-height: 46px;
   padding: 6px 10px;
   border-radius: 14px;
@@ -184,6 +199,8 @@ function openUpdateDialog(): void {
 
 .v5-app-actions {
   display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
   align-items: center;
   gap: 2px;
 }
@@ -200,17 +217,24 @@ function openUpdateDialog(): void {
 }
 
 @media (max-width: 760px) {
+  .v5-app-bar {
+    padding:
+      max(6px, env(safe-area-inset-top))
+      max(7px, env(safe-area-inset-right))
+      0
+      max(7px, env(safe-area-inset-left));
+  }
+
   .v5-app-toolbar {
     min-height: 58px;
-    margin: 6px 7px 0;
     padding: 0 7px;
     border-radius: 16px;
   }
 
   .v5-app-brand {
     margin-left: 2px !important;
-    padding-left: 5px;
-    padding-right: 5px;
+    padding-right: 3px;
+    padding-left: 3px;
   }
 
   .v5-app-brand__mark {
@@ -221,6 +245,14 @@ function openUpdateDialog(): void {
   .v5-version-chip,
   .v5-desktop-action {
     display: none !important;
+  }
+
+  .v5-app-actions {
+    gap: 0;
+  }
+
+  .v5-app-actions .q-btn {
+    min-width: 38px;
   }
 }
 

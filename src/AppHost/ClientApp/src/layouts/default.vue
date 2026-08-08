@@ -67,7 +67,7 @@ const globalStore = useGlobalStore();
 const authStore = useAuthenticationStore();
 
 const alerts = ref<IAlert[]>([]);
-const showNavigationDrawerState = ref(true);
+const showNavigationDrawerState = ref(false);
 const showNotificationsDrawerState = ref(false);
 
 const pageLoading = ref(true);
@@ -75,6 +75,15 @@ const pageApiLoading = ref(true);
 
 const isLoading = computed((): boolean => get(pageLoading) || get(pageApiLoading));
 const isEmptyLayout = computed((): boolean => route.fullPath.includes('setup') || route.fullPath.includes('login'),
+);
+
+watch(
+	() => route.fullPath,
+	() => {
+		if (typeof window !== 'undefined' && window.innerWidth < 960) {
+			set(showNavigationDrawerState, false);
+		}
+	},
 );
 
 function toggleNavigationsDrawer() {
@@ -105,6 +114,7 @@ nuxtApp.hook('page:finish', () => {
 });
 
 onMounted(() => {
+	set(showNavigationDrawerState, window.innerWidth >= 960);
 	useSubscription(
 		globalStore.getPageSetupReady.subscribe({
 			next: (ready) => {

@@ -2,8 +2,9 @@
 	<q-drawer
 		class="navigation-drawer v5-navigation-drawer"
 		:model-value="showDrawer"
-		:width="336"
+		:width="drawerWidth"
 		:breakpoint="960"
+		:overlay="isMobile"
 		@before-show="onShow"
 		@before-hide="onHide">
 		<div class="v5-drawer-shell">
@@ -104,6 +105,7 @@
 import type { QExpansionListProps } from '@interfaces/components/QExpansionListProps';
 import { useSettingsStore, useDownloadStore } from '@store';
 import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 
 withDefaults(defineProps<{ showDrawer?: boolean }>(), {
 	showDrawer: false,
@@ -113,6 +115,16 @@ const route = useRoute();
 const settingsStore = useSettingsStore();
 const downloadStore = useDownloadStore();
 const { t } = useI18n();
+const $q = useQuasar();
+
+const isMobile = computed(() => $q.screen.width < 960);
+const drawerWidth = computed(() => {
+	if (!isMobile.value) {
+		return 336;
+	}
+
+	return Math.max(280, Math.min(336, $q.screen.width - 20));
+});
 
 const secondaryNavItems = computed((): QExpansionListProps[] => {
 	const items: QExpansionListProps[] = [
@@ -191,25 +203,27 @@ function onHide() {
 	document.body.classList.remove('navigation-drawer-opened');
 	document.body.classList.add('navigation-drawer-closed');
 }
-
-onMounted(() => {
-	document.body.classList.add('navigation-drawer-opened');
-});
 </script>
 
 <style lang="scss">
 .v5-navigation-drawer {
   border-right: 0 !important;
   background: transparent !important;
+  box-shadow: none !important;
 }
 
 .v5-navigation-drawer .q-drawer__content {
+  box-sizing: border-box;
+  height: 100%;
   padding: 10px 0 10px 10px;
+  overflow: hidden;
   background: transparent;
 }
 
 .v5-drawer-shell {
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
   height: 100%;
   min-height: 0;
   flex-direction: column;
@@ -219,10 +233,12 @@ onMounted(() => {
   background: var(--v5-surface-strong);
   box-shadow: var(--v5-shadow-lg);
   backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
 }
 
 .v5-drawer-heading {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   padding: 21px 19px 13px;
@@ -257,6 +273,7 @@ onMounted(() => {
 
 .v5-primary-nav {
   display: grid;
+  flex: 0 0 auto;
   gap: 7px;
   padding: 4px 10px 14px;
 }
@@ -311,6 +328,7 @@ onMounted(() => {
 
 .v5-drawer-section-header {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   padding: 11px 18px 9px;
@@ -347,14 +365,14 @@ onMounted(() => {
 
 .v5-drawer-footer {
   flex: 0 0 auto;
-  padding: 5px 8px 9px;
+  padding: 5px 8px max(9px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--v5-border);
   background: rgba(0, 0, 0, 0.05);
 }
 
 .v5-drawer-section-header--footer {
-  padding-left: 10px;
   padding-right: 10px;
+  padding-left: 10px;
 }
 
 .v5-drawer-footer .q-item {
@@ -362,13 +380,52 @@ onMounted(() => {
   border-radius: 12px;
 }
 
-@media (max-width: 960px) {
+/* Give mobile Safari a real modal backdrop instead of leaving the page visually active. */
+.q-drawer__backdrop {
+  background: rgba(2, 5, 12, 0.58) !important;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+@media (max-width: 959px) {
   .v5-navigation-drawer .q-drawer__content {
-    padding: 7px;
+    padding:
+      max(7px, env(safe-area-inset-top))
+      0
+      max(7px, env(safe-area-inset-bottom))
+      max(7px, env(safe-area-inset-left));
   }
 
   .v5-drawer-shell {
     border-radius: 20px;
+  }
+
+  .v5-drawer-heading {
+    padding: 17px 16px 10px;
+  }
+
+  .v5-primary-nav {
+    gap: 4px;
+    padding: 3px 8px 10px;
+  }
+
+  .v5-primary-nav__item {
+    min-height: 58px;
+    border-radius: 15px;
+  }
+
+  .v5-primary-nav__icon {
+    width: 35px;
+    height: 35px;
+  }
+
+  .v5-drawer-section-header {
+    padding-top: 9px;
+    padding-bottom: 7px;
+  }
+
+  .v5-server-drawer .q-item {
+    min-height: 42px;
   }
 }
 

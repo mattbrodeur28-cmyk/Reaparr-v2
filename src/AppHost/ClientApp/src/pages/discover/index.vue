@@ -297,7 +297,7 @@
 								class="discover-reason-badge"
 								:class="reasonClass(item.comparisonState)">
 								<q-icon :name="reasonIcon(item.comparisonState)" />
-								{{ reasonLabel(item.comparisonState) }}
+								{{ reasonLabel(item.comparisonState, item.media.type) }}
 							</span>
 
 							<span
@@ -315,6 +315,19 @@
 								name="mdi-fingerprint"
 								:class="{ 'text-warning': item.identityBasis === 'title-year' }" />
 							{{ identityLabel(item) }}
+						</div>
+
+						<div
+							v-if="item.media.type === PlexMediaType.TvShow"
+							class="discover-tv-repair-cta">
+							<q-btn
+								flat
+								dense
+								no-caps
+								rounded
+								icon="mdi-format-list-checks"
+								label="Review missing / upgrades"
+								@click.stop="openTvFixPlan(item)" />
 						</div>
 
 						<div class="discover-card-v5__source">
@@ -389,6 +402,10 @@
 			</div>
 		</template>
 
+		<DiscoverTvFixDialog
+			v-model="tvFixDialogOpen"
+			:item="selectedTvItem"
+			@queued="onTvFixQueued" />
 		<MediaComparisonDetailsDialog />
 		<DownloadConfirmation @download="downloadStore.downloadMedia($event)" />
 	</q-page>
@@ -413,6 +430,7 @@ import {
 	useSettingsStore,
 } from '@store';
 import type { IDiscoverItem } from '@/store/discoverStore';
+import DiscoverTvFixDialog from '@/components/Views/Discover/DiscoverTvFixDialog.vue';
 
 const discoverStore = useDiscoverStore();
 const downloadStore = useDownloadStore();
@@ -428,6 +446,8 @@ const reasonFilter = ref<'all' | 'missing' | 'upgrades'>('all');
 const wantedOnly = useLocalStorage('reaparr-discover-wanted-only', true);
 const pageSize = useLocalStorage<number>('reaparr-discover-page-size', 100);
 const page = ref(1);
+const tvFixDialogOpen = ref(false);
+const selectedTvItem = ref<IDiscoverItem | null>(null);
 
 const pageSizeOptions = [
 	{ label: '25', value: 25 },
@@ -604,7 +624,21 @@ function loadMore() {
 	useSubscription(discoverStore.loadMore(get(pageSize)).subscribe());
 }
 
-function reasonLabel(state: PlexMediaComparisonState): string {
+function reasonLabel(state: PlexMediaComparisonState, mediaType: PlexMediaType): string {
+	if (mediaType === PlexMediaType.TvShow) {
+		switch (state) {
+			case PlexMediaComparisonState.Missing:
+			case PlexMediaComparisonState.Partial:
+				return 'Missing content';
+			case PlexMediaComparisonState.HigherQuality:
+				return 'Upgrades available';
+			case PlexMediaComparisonState.PartialAndHigherQuality:
+				return 'Missing + upgrades';
+			default:
+				return 'Review content';
+		}
+	}
+
 	switch (state) {
 		case PlexMediaComparisonState.Missing:
 			return 'Missing';
@@ -677,6 +711,11 @@ function qualityLabel(media: PlexMediaSlimDTO): string {
 }
 
 function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
+	if (item.media.type === PlexMediaType.TvShow) {
+		openTvFixPlan(item);
+		return;
+	}
+
 	if (!command.length || !command.some((download) => download.mediaIds.length > 0)) {
 		return;
 	}
@@ -718,6 +757,16 @@ function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 	});
 }
 
+function openTvFixPlan(item: IDiscoverItem) {
+	selectedTvItem.value = item;
+	tvFixDialogOpen.value = true;
+}
+
+function onTvFixQueued() {
+	// Keep the current cached feed visible while Reaparr creates exact episode tasks.
+	// V6 reconciliation will refresh owned Plex state after completed moves.
+}
+
 function openMediaDetails(mediaItem: PlexMediaSlimDTO) {
 	if (mediaItem.type === PlexMediaType.Movie) {
 		router.push({
@@ -746,6 +795,14 @@ onMounted(() => {
 </script>
 
 <style lang="scss">
+body.body--dark {
+  --v75-discover-sticky-bg: rgba(9, 12, 20, 0.975);
+}
+
+body.body--light {
+  --v75-discover-sticky-bg: rgba(247, 249, 252, 0.985);
+}
+
 .discover-page-v5 {
   position: relative;
   z-index: 1;
@@ -936,15 +993,19 @@ onMounted(() => {
 
 .discover-control-panel {
   position: sticky;
-  top: 74px;
-  z-index: 4;
+  top: 88px;
+  z-index: 80;
+  isolation: isolate;
+  box-sizing: border-box;
+  width: 100%;
   margin-top: 16px;
   padding: 12px;
   border: 1px solid var(--v5-border);
   border-radius: 22px;
-  background: var(--v5-surface-strong);
-  box-shadow: var(--v5-shadow-md);
-  backdrop-filter: blur(24px);
+  background: var(--v75-discover-sticky-bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
 }
 
 .discover-control-panel__top,
@@ -960,11 +1021,25 @@ onMounted(() => {
 }
 
 .discover-search-v5 {
+  min-width: 220px;
   flex: 1 1 420px;
   min-height: 44px;
   padding: 0 14px;
   border-radius: 14px;
   background: var(--v5-surface-soft);
+}
+
+.discover-search-v5 .q-field__native,
+.discover-search-v5 .q-field__input {
+  min-width: 0;
+  font-size: 0.95rem !important;
+  font-weight: 500;
+  line-height: 1.35 !important;
+}
+
+.discover-search-v5 .q-field__prepend,
+.discover-search-v5 .q-field__append {
+  font-size: 1.25rem;
 }
 
 .discover-view-controls {
@@ -981,10 +1056,16 @@ onMounted(() => {
 }
 
 .discover-page-size {
-  width: 82px;
+  width: 104px;
+  min-width: 104px;
   padding: 0 9px;
   border-radius: 12px;
   background: var(--v5-surface-soft);
+}
+
+.discover-page-size .q-field__native,
+.discover-page-size .q-field__input {
+  font-size: 0.84rem !important;
 }
 
 .discover-segment {
@@ -1065,6 +1146,8 @@ onMounted(() => {
 
 .discover-grid-v5,
 .discover-skeleton-grid {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
   gap: 18px;
@@ -1081,6 +1164,10 @@ onMounted(() => {
 }
 
 .discover-card-v5 {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  contain: paint;
   transition:
     transform 180ms ease,
     border-color 180ms ease,
@@ -1088,6 +1175,7 @@ onMounted(() => {
 }
 
 .discover-card-v5:hover {
+  z-index: 1;
   transform: translateY(-5px);
   border-color: rgba(255, 92, 119, 0.34);
   box-shadow: var(--v5-shadow-lg);
@@ -1259,6 +1347,44 @@ onMounted(() => {
   margin-right: 14px;
 }
 
+.discover-tv-repair-cta {
+  margin-top: 9px;
+}
+
+.discover-tv-repair-cta .q-btn {
+  width: 100%;
+  min-height: 34px;
+  justify-content: flex-start;
+  border: 1px solid rgba(99, 190, 255, 0.14);
+  background: rgba(99, 190, 255, 0.055);
+  color: var(--v5-text-muted);
+  font-size: 0.72rem;
+}
+
+.discover-tv-repair-cta .q-btn:hover {
+  border-color: rgba(99, 190, 255, 0.3);
+  color: var(--v5-text);
+}
+
+@media (max-width: 1050px) and (min-width: 761px) {
+  .discover-control-panel {
+    top: 84px;
+  }
+
+  .discover-control-panel__top {
+    align-items: stretch;
+  }
+
+  .discover-control-panel__bottom {
+    row-gap: 8px;
+  }
+
+  .discover-wanted-toggle-v5 {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
 @media (max-width: 1100px) {
   .discover-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1296,6 +1422,9 @@ onMounted(() => {
   .discover-control-panel {
     position: relative;
     top: auto;
+    z-index: 3;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .discover-control-panel__top,

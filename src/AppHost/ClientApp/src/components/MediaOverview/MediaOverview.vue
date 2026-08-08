@@ -55,7 +55,7 @@
 							</template>
 						</QCol>
 						<!-- Alphabet Navigation -->
-						<AlphabetNavigation />
+						<AlphabetNavigation class="v75-alphabet-navigation" />
 					</QRow>
 				</template>
 				<!-- No Media Overview - Error Messages -->
@@ -296,6 +296,18 @@ onMounted(() => {
 
   .progress-bar-cell {
     width: 250px;
+  }
+}
+
+/* V7.5 narrow-screen MediaOverview */
+@media (max-width: 700px) {
+  .v75-alphabet-navigation {
+    display: none !important;
+  }
+
+  .media-overview-content > .row > .col {
+    min-width: 0;
+    width: 100%;
   }
 }
 </style>
