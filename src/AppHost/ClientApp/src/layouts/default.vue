@@ -166,3 +166,7 @@ onMounted(() => {
 <style lang="scss">
 @use '@/assets/scss/v5-modern.scss';
 </style>
+
+<style lang="scss">
+@use '@/assets/scss/v7-overhaul.scss';
+</style>

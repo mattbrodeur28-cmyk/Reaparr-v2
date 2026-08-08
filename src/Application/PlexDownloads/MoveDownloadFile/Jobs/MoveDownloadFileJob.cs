@@ -118,6 +118,20 @@ public class MoveDownloadFileJob : IJob
             if (downloadTask.DownloadStatus is DownloadStatus.MoveFinished)
             {
                 await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(downloadTaskKey, DownloadStatus.Completed, ct);
+                // V6: Best-effort reconciliation after the file is safely in its final destination.
+                // Reconciliation failures must never turn a successful download into a failed download.
+                var reconciliationResult = await Result.Try(() =>
+                    _commandExecutor.Send(new ReconcileCompletedDownloadCommand(downloadTaskKey), ct)
+                );
+                if (reconciliationResult.IsFailed)
+                {
+                    _log.Here()
+                        .Warning(
+                            "Post-download library reconciliation failed for {DownloadTaskKey}: {Error}",
+                            downloadTaskKey,
+                            reconciliationResult.Errors.FirstOrDefault()?.Message
+                        );
+                }
 
                 // Clean up the Download task folders
                 var cleanupResult = await Result.Try(() =>
