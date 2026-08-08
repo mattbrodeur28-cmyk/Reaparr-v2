@@ -6,14 +6,20 @@
 					Discover
 				</div>
 				<div class="text-subtitle1 text-grey-5 q-mt-xs">
-					Only media you are missing, partially missing, or can upgrade.
+					One title per card. Reaparr automatically chooses the best online source when you download.
+				</div>
+				<div
+					v-if="discoverStore.lastUpdatedAt"
+					class="text-caption text-grey-6 q-mt-xs">
+					{{ cacheLabel }}
 				</div>
 			</div>
+
 			<q-btn
 				color="primary"
 				icon="mdi-refresh"
 				label="Refresh"
-				:loading="discoverStore.loading"
+				:loading="discoverStore.refreshing"
 				data-cy="discover-refresh"
 				@click="refresh" />
 		</div>
@@ -25,13 +31,14 @@
 				class="discover-stat-card">
 				<q-card-section>
 					<div class="text-caption text-grey-5">
-						Discoverable
+						Showing
 					</div>
 					<div class="text-h4 text-weight-bold">
-						{{ discoverStore.items.length }}
+						{{ filteredItems.length }}
 					</div>
 				</q-card-section>
 			</q-card>
+
 			<q-card
 				flat
 				bordered
@@ -45,6 +52,7 @@
 					</div>
 				</q-card-section>
 			</q-card>
+
 			<q-card
 				flat
 				bordered
@@ -55,6 +63,20 @@
 					</div>
 					<div class="text-h4 text-weight-bold">
 						{{ upgradeCount }}
+					</div>
+				</q-card-section>
+			</q-card>
+
+			<q-card
+				flat
+				bordered
+				class="discover-stat-card">
+				<q-card-section>
+					<div class="text-caption text-grey-5">
+						Extra duplicate sources merged
+					</div>
+					<div class="text-h4 text-weight-bold">
+						{{ mergedSourceCount }}
 					</div>
 				</q-card-section>
 			</q-card>
@@ -94,8 +116,45 @@
 					toggle-color="primary"
 					:options="reasonOptions"
 					data-cy="discover-reason-filter" />
+
+				<q-separator
+					vertical
+					class="discover-toolbar-separator" />
+
+				<div class="discover-wanted-toggle">
+					<q-toggle
+						v-model="wantedOnly"
+						color="primary"
+						:disable="!discoverStore.arrConfigured"
+						label="Sonarr / Radarr missing only" />
+					<div class="text-caption text-grey-6">
+						Default: limit missing titles to *arr; upgrade opportunities still appear
+					</div>
+				</div>
 			</q-card-section>
 		</q-card>
+
+		<q-banner
+			v-if="!discoverStore.arrConfigured"
+			class="bg-info text-white q-mt-md rounded-borders">
+			Configure Radarr and/or Sonarr in Reaparr to enable the wanted-only Discover filter.
+		</q-banner>
+
+		<q-banner
+			v-else-if="!discoverStore.arrDataAvailable"
+			class="bg-warning text-dark q-mt-md rounded-borders">
+			The Sonarr/Radarr wanted list is unavailable right now, so Discover is temporarily showing the full Plex missing/upgrade feed.
+		</q-banner>
+
+		<q-banner
+			v-if="discoverStore.arrWarnings.length"
+			class="bg-warning text-dark q-mt-md rounded-borders">
+			<div
+				v-for="warning in discoverStore.arrWarnings"
+				:key="warning">
+				{{ warning }}
+			</div>
+		</q-banner>
 
 		<q-banner
 			v-if="discoverStore.errorMessage"
@@ -104,7 +163,7 @@
 		</q-banner>
 
 		<div
-			v-if="discoverStore.loading"
+			v-if="discoverStore.loading && !discoverStore.items.length"
 			class="discover-loading">
 			<QSpinner
 				size="48px"
@@ -119,12 +178,21 @@
 
 		<template v-else>
 			<div
+				v-if="discoverStore.refreshing && discoverStore.items.length"
+				class="discover-refreshing text-caption text-grey-5 q-mt-md">
+				<QSpinner
+					size="18px"
+					class="q-mr-sm" />
+				Refreshing in the background — cached results stay visible.
+			</div>
+
+			<div
 				v-if="filteredItems.length"
 				class="discover-grid q-mt-lg"
 				data-cy="discover-grid">
 				<div
 					v-for="item in filteredItems"
-					:key="`${item.media.plexServerId}-${item.media.plexLibraryId}-${item.media.id}`"
+					:key="item.key"
 					class="discover-item">
 					<div class="discover-reason-row">
 						<q-chip
@@ -134,18 +202,38 @@
 							:icon="reasonIcon(item.comparisonState)">
 							{{ reasonLabel(item.comparisonState) }}
 						</q-chip>
+
+						<q-chip
+							v-if="item.sources.length > 1"
+							dense
+							outline
+							color="secondary"
+							icon="mdi-server-network">
+							{{ item.sources.length }} sources
+						</q-chip>
 					</div>
 
 					<MediaPoster
 						:media-item="item.media"
-						@download="handleDownload"
+						@download="handleDownload($event, item)"
 						@open-media-details="openMediaDetails" />
 
 					<div class="discover-source text-caption text-grey-5">
-						{{ serverStore.getServerName(item.media.plexServerId) }}
-						<span v-if="libraryStore.getLibraryName(item.media.plexLibraryId)">
-							• {{ libraryStore.getLibraryName(item.media.plexLibraryId) }}
-						</span>
+						<div class="discover-source-line">
+							<q-icon
+								:name="discoverStore.isSourceOnline(item.media.plexServerId) ? 'mdi-server-network' : 'mdi-server-network-off'"
+								:color="discoverStore.isSourceOnline(item.media.plexServerId) ? 'positive' : 'negative'"
+								size="16px" />
+							<span>
+								Best: {{ serverStore.getServerName(item.media.plexServerId) }}
+							</span>
+						</div>
+						<div>
+							{{ qualityLabel(item.media) }}
+							<span v-if="item.wantedBy.length">
+								• Wanted by {{ item.wantedBy.join(' + ') }}
+							</span>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -161,7 +249,7 @@
 					Nothing to discover with these filters
 				</div>
 				<div class="text-body2 text-grey-5 q-mt-sm">
-					If your remote libraries have finished syncing and comparing, this means you already own the matching content at the best available quality.
+					Try turning off the Sonarr/Radarr missing-only flag, or refresh after your Plex and *arr libraries update.
 				</div>
 			</div>
 		</template>
@@ -172,11 +260,13 @@
 </template>
 
 <script setup lang="ts">
-import { get, set } from '@vueuse/core';
+import { get, set, useLocalStorage } from '@vueuse/core';
+import { useQuasar } from 'quasar';
 import { useSubscription } from '@vueuse/rxjs';
 import {
 	PlexMediaComparisonState,
 	PlexMediaType,
+	VideoQuality,
 	type DownloadMediaDTO,
 	type PlexMediaSlimDTO,
 } from '@dto';
@@ -184,22 +274,23 @@ import {
 	useDialogStore,
 	useDiscoverStore,
 	useDownloadStore,
-	useLibraryStore,
 	useServerStore,
 	useSettingsStore,
 } from '@store';
+import type { IDiscoverItem } from '@/store/discoverStore';
 
 const discoverStore = useDiscoverStore();
 const downloadStore = useDownloadStore();
 const dialogStore = useDialogStore();
 const settingsStore = useSettingsStore();
 const serverStore = useServerStore();
-const libraryStore = useLibraryStore();
 const router = useRouter();
+const $q = useQuasar();
 
 const search = ref('');
 const mediaTypeFilter = ref<'all' | 'movies' | 'tv'>('all');
 const reasonFilter = ref<'all' | 'missing' | 'upgrades'>('all');
+const wantedOnly = useLocalStorage('reaparr-discover-wanted-only', true);
 
 const mediaTypeOptions = [
 	{ label: 'All', value: 'all' },
@@ -224,8 +315,11 @@ const upgradeStates: PlexMediaComparisonState[] = [
 	PlexMediaComparisonState.PartialAndHigherQuality,
 ];
 
-const missingCount = computed(() => discoverStore.items.filter((item) => missingStates.includes(item.comparisonState)).length);
-const upgradeCount = computed(() => discoverStore.items.filter((item) => upgradeStates.includes(item.comparisonState)).length);
+const applyWantedOnly = computed(() =>
+	get(wantedOnly)
+	&& discoverStore.arrConfigured
+	&& discoverStore.arrDataAvailable,
+);
 
 const filteredItems = computed(() => {
 	const query = get(search).trim().toLocaleLowerCase();
@@ -233,6 +327,10 @@ const filteredItems = computed(() => {
 	const reason = get(reasonFilter);
 
 	return discoverStore.items.filter((item) => {
+		if (get(applyWantedOnly) && !upgradeStates.includes(item.comparisonState) && !item.wantedByArr) {
+			return false;
+		}
+
 		if (query && !item.media.title.toLocaleLowerCase().includes(query)) {
 			return false;
 		}
@@ -243,7 +341,6 @@ const filteredItems = computed(() => {
 		if (typeFilter === 'tv' && item.media.type !== PlexMediaType.TvShow) {
 			return false;
 		}
-
 		if (reason === 'missing' && !missingStates.includes(item.comparisonState)) {
 			return false;
 		}
@@ -253,6 +350,32 @@ const filteredItems = computed(() => {
 
 		return true;
 	});
+});
+
+const missingCount = computed(() =>
+	get(filteredItems).filter((item) => missingStates.includes(item.comparisonState)).length,
+);
+
+const upgradeCount = computed(() =>
+	get(filteredItems).filter((item) => upgradeStates.includes(item.comparisonState)).length,
+);
+
+const mergedSourceCount = computed(() =>
+	discoverStore.items.reduce((count, item) => count + Math.max(0, item.sources.length - 1), 0),
+);
+
+const cacheLabel = computed(() => {
+	if (!discoverStore.lastUpdatedAt) {
+		return '';
+	}
+
+	const ageMinutes = Math.max(0, Math.round((Date.now() - discoverStore.lastUpdatedAt) / 60000));
+	const source = discoverStore.loadedFromCache ? 'Cached feed' : 'Live feed';
+	if (ageMinutes < 1) {
+		return `${source} • updated just now`;
+	}
+
+	return `${source} • updated ${ageMinutes}m ago`;
 });
 
 function refresh() {
@@ -288,21 +411,66 @@ function reasonIcon(state: PlexMediaComparisonState): string {
 	return 'mdi-plus-circle-outline';
 }
 
-function handleDownload(command: DownloadMediaDTO[]) {
-	if (!command.length || !command.some((item) => item.mediaIds.length > 0)) {
+function qualityLabel(media: PlexMediaSlimDTO): string {
+	switch (discoverStore.getBestQuality(media)) {
+		case VideoQuality.UHD_8K:
+			return '8K';
+		case VideoQuality.UHD_4K:
+			return '4K';
+		case VideoQuality.QHD:
+			return '1440p';
+		case VideoQuality.FullHD:
+			return '1080p';
+		case VideoQuality.HD:
+			return '720p';
+		case VideoQuality.DVD:
+			return 'DVD';
+		case VideoQuality.SD:
+			return 'SD';
+		default:
+			return 'Quality unknown';
+	}
+}
+
+function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
+	if (!command.length || !command.some((download) => download.mediaIds.length > 0)) {
 		return;
 	}
 
-	const mediaType = command[0]?.type ?? PlexMediaType.Unknown;
+	const requestedQualities = [
+		...new Set(command.flatMap((download) => download.qualities.map((quality) => quality.quality))),
+	];
+
+	const bestSource = discoverStore.selectBestSource(item, requestedQualities, true);
+	if (!bestSource) {
+		$q.notify({
+			type: 'warning',
+			message: requestedQualities.length
+				? 'No online source currently has the selected quality.'
+				: 'No online, available source is currently available for this title.',
+		});
+		return;
+	}
+
+	const smartCommand: DownloadMediaDTO[] = [{
+		type: bestSource.media.type,
+		mediaIds: [bestSource.media.id],
+		plexLibraryId: bestSource.media.plexLibraryId,
+		plexServerId: bestSource.media.plexServerId,
+		qualities: discoverStore.getMatchingQualities(bestSource.media, requestedQualities),
+		keepCompletedInDownloadFolder: settingsStore.downloadManagerSettings.keepCompletedInDownloadFolder,
+	}];
+
+	const mediaType = smartCommand[0]?.type ?? PlexMediaType.Unknown;
 	if (settingsStore.isConfirmationEnabled(mediaType)) {
-		dialogStore.openMediaConfirmationDownloadDialog(command);
+		dialogStore.openMediaConfirmationDownloadDialog(smartCommand);
 		return;
 	}
 
 	downloadStore.downloadMedia({
 		customDestinationFolderPath: '',
 		destinationFolderPathId: null,
-		downloadMedias: command,
+		downloadMedias: smartCommand,
 	});
 }
 
@@ -329,7 +497,7 @@ function openMediaDetails(mediaItem: PlexMediaSlimDTO) {
 
 onMounted(() => {
 	set(search, '');
-	useSubscription(discoverStore.refresh().subscribe());
+	useSubscription(discoverStore.initialize().subscribe());
 });
 </script>
 
@@ -349,7 +517,7 @@ onMounted(() => {
 
 .discover-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -370,6 +538,14 @@ onMounted(() => {
   flex: 1 1 300px;
 }
 
+.discover-toolbar-separator {
+  min-height: 42px;
+}
+
+.discover-wanted-toggle {
+  min-width: 260px;
+}
+
 .discover-loading,
 .discover-empty {
   min-height: 360px;
@@ -384,6 +560,11 @@ onMounted(() => {
   max-width: 620px;
   margin-left: auto;
   margin-right: auto;
+}
+
+.discover-refreshing {
+  display: flex;
+  align-items: center;
 }
 
 .discover-grid {
@@ -402,14 +583,28 @@ onMounted(() => {
   min-height: 32px;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   padding: 0 12px;
 }
 
 .discover-source {
   padding: 4px 16px 0;
+  overflow: hidden;
+}
+
+.discover-source-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+  .discover-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 700px) {
@@ -427,6 +622,10 @@ onMounted(() => {
 
   .discover-toolbar-content {
     align-items: stretch;
+  }
+
+  .discover-toolbar-separator {
+    display: none;
   }
 }
 </style>

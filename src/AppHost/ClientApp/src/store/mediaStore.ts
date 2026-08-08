@@ -1,25 +1,25 @@
 import { acceptHMRUpdate, defineStore } from 'pinia';
 import { reactive, toRefs } from 'vue';
-import { from, type Observable } from 'rxjs';
-import { of } from 'rxjs';
-import { map, take, catchError } from 'rxjs/operators';
+import { from, type Observable, of } from 'rxjs';
+import { map, take, catchError, switchMap } from 'rxjs/operators';
 import type { PlexMediaComparisonDetailsDTO, PlexMediaType, PlexMediaDTO, BaseResultDTO } from '@dto';
 import { StoreNames, type ISetupResult } from '@interfaces';
 import { plexMediaApi } from '@api';
 import { cloneDeep } from 'lodash-es';
 import Log from 'consola';
 import Axios from 'axios';
+import { getCachedPosterBlob, setCachedPosterBlob } from '@/utils/persistentCache';
 
 interface IMediaUrlStoreState {
 	mediaUrls: IObjectUrl[];
 }
 
 interface IObjectUrl {
-	plexServerId: number;
-	plexKey: string;
-	metaDataKey: number;
+	cacheKey: string;
 	url: string;
 }
+
+const POSTER_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export const useMediaStore = defineStore(StoreNames.MediaStore, () => {
 	const defaultState: IMediaUrlStoreState = {
@@ -27,7 +27,6 @@ export const useMediaStore = defineStore(StoreNames.MediaStore, () => {
 	};
 
 	const state = reactive<IMediaUrlStoreState>(cloneDeep(defaultState));
-
 	const actions = {
 		setup(): Observable<ISetupResult> {
 			return of({ name: StoreNames.MediaStore, isSuccess: true }).pipe(take(1));
@@ -53,65 +52,71 @@ export const useMediaStore = defineStore(StoreNames.MediaStore, () => {
 			height: number;
 			width: number;
 		}): Observable<string> {
-			// Fast-path: return cached object URL if present
-			const existing = state.mediaUrls.find((x) => x.plexServerId === query.plexServerId && x.plexKey === query.plexKey && x.metaDataKey === query.metaDataKey);
-			if (existing)
+			const cacheKey = [
+				query.plexServerId,
+				query.plexKey,
+				query.metaDataKey,
+				`${query.width}x${query.height}`,
+			].join(':');
+
+			const existing = state.mediaUrls.find((x) => x.cacheKey === cacheKey);
+			if (existing) {
 				return of(existing.url);
+			}
 
-			return from(
-				Axios.request<Blob | BaseResultDTO>({
-					url: `/api/PlexMedia/thumbnail`,
-					method: 'GET',
-					params: query,
-					responseType: 'blob',
+			return from(getCachedPosterBlob(cacheKey, POSTER_CACHE_TTL_MS)).pipe(
+				switchMap((cachedBlob) => {
+					if (cachedBlob) {
+						return of(actions.updateMediaUrl(cacheKey, cachedBlob));
+					}
+
+					return from(
+						Axios.request<Blob | BaseResultDTO>({
+							url: `/api/PlexMedia/thumbnail`,
+							method: 'GET',
+							params: query,
+							responseType: 'blob',
+						}),
+					).pipe(
+						map((res) => {
+							if (res.status === 200) {
+								const blob = res.data as Blob;
+								void setCachedPosterBlob(cacheKey, blob);
+								return actions.updateMediaUrl(cacheKey, blob);
+							}
+
+							Log.warn('Failed to get media thumbnail image', res);
+							return '';
+						}),
+						catchError((error) => {
+							Log.debug('Media thumbnail request failed', { query, error: error?.message || error });
+							return of('');
+						}),
+					);
 				}),
-			)
-				.pipe(
-					map((res) => {
-						if (res.status === 200) {
-							return actions.updateMediaUrl({
-								plexServerId: query.plexServerId,
-								plexKey: query.plexKey,
-								metaDataKey: query.metaDataKey,
-								image: res.data as Blob,
-							});
-						}
-						Log.warn('Failed to get media thumbnail image', res);
-						return '';
-					}),
-					catchError((error) => {
-					// Handle network errors, timeouts, 502/504 gateway errors silently
-					// Return empty string to trigger fallback image display
-						Log.debug('Media thumbnail request failed', { query, error: error?.message || error });
-						return of('');
-					}),
-				);
+			);
 		},
-
-		updateMediaUrl({
-			plexServerId,
-			plexKey,
-			metaDataKey,
-			image,
-		}: {
-			plexServerId: number;
-			plexKey: string;
-			metaDataKey: number;
-			image: Blob;
-		}): string {
-			const index = state.mediaUrls.findIndex((x) => x.plexServerId === plexServerId && x.plexKey === plexKey && x.metaDataKey === metaDataKey);
+		updateMediaUrl(cacheKey: string, image: Blob): string {
+			const index = state.mediaUrls.findIndex((x) => x.cacheKey === cacheKey);
 			const mediaObject = Object.freeze({
-				plexServerId,
-				plexKey,
-				metaDataKey,
+				cacheKey,
 				url: URL.createObjectURL(image),
 			});
 
-			void (index === -1 ? state.mediaUrls.push(mediaObject) : state.mediaUrls.splice(index, 1, mediaObject));
+			if (index === -1) {
+				state.mediaUrls.push(mediaObject);
+			} else {
+				const previous = state.mediaUrls[index];
+				if (previous) {
+					URL.revokeObjectURL(previous.url);
+				}
+				state.mediaUrls.splice(index, 1, mediaObject);
+			}
 
 			return mediaObject.url;
 		},
 		$reset() {
+			state.mediaUrls.forEach((item) => URL.revokeObjectURL(item.url));
 			Object.assign(state, cloneDeep(defaultState));
 		},
 	};
