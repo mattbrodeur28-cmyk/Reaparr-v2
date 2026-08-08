@@ -39,13 +39,12 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
     NUGET_XMLDOC_MODE=skip
 
-COPY ["Directory.Build.props", "."]
-COPY --parents src/*/*.csproj src/*/packages.lock.json /src/
+# Copy the complete source tree before restore.
+# This is slightly less cache-efficient but more reliable for fork builds.
+COPY . .
 
 ## Restore Projects
 RUN dotnet restore "src/AppHost/AppHost.csproj" --locked-mode
-
-COPY . .
 WORKDIR "/src/src/AppHost"
 
 ## Build and Publish
