@@ -38,6 +38,11 @@ const { t } = useI18n();
 const getNavItems = computed((): QExpansionListProps[] => {
 	const mainItems: QExpansionListProps[] = [
 		{
+			title: 'Discover',
+			icon: 'mdi-compass-outline',
+			link: '/discover',
+		},
+		{
 			title: t('components.navigation-drawer.downloads'),
 			icon: 'mdi-download',
 			link: '/downloads',

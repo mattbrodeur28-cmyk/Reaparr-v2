@@ -4,6 +4,7 @@ export * from './alertStore';
 export * from './authStore';
 export * from './backgroundJobsStore';
 export * from './dialogStore';
+export * from './discoverStore';
 export * from './downloadStore';
 export * from './folderPathStore';
 export * from './globalStore';
