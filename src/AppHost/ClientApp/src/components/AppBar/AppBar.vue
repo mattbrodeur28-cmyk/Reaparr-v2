@@ -28,11 +28,15 @@
 			<button
 				type="button"
 				class="v5-version-chip"
-				@click="copy(globalStore.version)">
+				@click="copy(displayVersion)">
 				<q-icon name="mdi-source-branch" />
-				<span>{{ globalStore.version }}</span>
-				<q-tooltip>
-					{{ $t('components.app-bar.copy-version', { version: globalStore.version }) }}
+				<span>{{ displayVersion }}</span>
+				<q-tooltip
+					class="v8-version-tooltip"
+					anchor="bottom middle"
+					self="top middle"
+					:offset="[0, 8]">
+					{{ $t('components.app-bar.copy-version', { version: displayVersion }) }}
 				</q-tooltip>
 			</button>
 
@@ -72,13 +76,14 @@
 </template>
 
 <script setup lang="ts">
-import { useGlobalStore, useDialogStore, useUpdateStore } from '@store';
+import { useDialogStore, useUpdateStore } from '@store';
 import { DialogType } from '@enums';
 import { useClipboard } from '@vueuse/core';
 
-const globalStore = useGlobalStore();
 const dialogStore = useDialogStore();
 const updateStore = useUpdateStore();
+
+const displayVersion = 'V8.0';
 
 const { copy } = useClipboard({ legacy: true });
 
@@ -265,5 +270,25 @@ function openUpdateDialog(): void {
   .v5-app-action {
     transition: none;
   }
+}
+
+.v8-version-tooltip {
+  box-sizing: border-box !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: min(320px, calc(100vw - 24px)) !important;
+  padding: 6px 9px !important;
+  border: 1px solid var(--v5-border) !important;
+  border-radius: 8px !important;
+  background: rgba(16, 19, 29, 0.98) !important;
+  color: var(--v5-text) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+  text-align: left !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
 }
 </style>
