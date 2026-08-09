@@ -41,34 +41,69 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
         if (downloadTaskKey is null)
             return ResultExtensions.EntityNotFound(nameof(DownloadTaskGeneric), command.DownloadTaskGuid).LogWarning();
 
+        var isLeafRestart =
+            downloadTaskKey.Type is DownloadTaskType.MovieData or DownloadTaskType.EpisodeData;
         var childKeys = new List<DownloadTaskKey>();
-        if (downloadTaskKey.Type is DownloadTaskType.MovieData or DownloadTaskType.EpisodeData)
+
+        if (isLeafRestart)
         {
-            // A restart from a movie/episode file row is a leaf retry.
-            // Never expand it back into the containing season/show.
+            // Direct movie/episode restart means exactly that leaf.
             childKeys.Add(downloadTaskKey);
         }
         else
         {
-            childKeys.AddRange(
-                await _dbContext.GetDownloadableChildTaskKeys(
-                    downloadTaskKey,
-                    cancellationToken
-                )
+            // A show/season restart may expand to descendants, but completed
+            // files must never be restarted.
+            var candidateKeys = await _dbContext.GetDownloadableChildTaskKeys(
+                downloadTaskKey,
+                cancellationToken
             );
+
+            foreach (var candidateKey in candidateKeys)
+            {
+                var candidateTask = await _dbContext.GetDownloadTaskAsync(
+                    candidateKey,
+                    cancellationToken
+                );
+
+                if (candidateTask is null)
+                    continue;
+
+                if (candidateTask.DownloadStatus == DownloadStatus.Completed)
+                    continue;
+
+                childKeys.Add(candidateKey);
+            }
         }
 
-        await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(
-            downloadTaskKey,
-            DownloadStatus.Restarting,
-            cancellationToken
-        );
+        if (childKeys.Count == 0)
+        {
+            await _dbContext.CreateDownloadClientLog(
+                downloadTaskKey,
+                NotificationLevel.Information,
+                DownloadStatus.Completed,
+                "Restart requested, but every descendant is already completed. Nothing was requeued."
+            );
+            return Result.Ok();
+        }
+
+        // Do not stamp a show/season parent Restarting. Leaf tasks below are
+        // transitioned individually, preventing a parent restart from making
+        // completed seasons/episodes appear restarted.
+        if (isLeafRestart)
+        {
+            await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(
+                downloadTaskKey,
+                DownloadStatus.Restarting,
+                cancellationToken
+            );
+        }
 
         await _dbContext.CreateDownloadClientLog(
             downloadTaskKey,
             NotificationLevel.Information,
             DownloadStatus.Restarting,
-            $"Restart requested for download task {downloadTaskKey.Id}. {childKeys.Count} leaf task(s) will be processed."
+            $"Restart requested for download task {downloadTaskKey.Id}. {childKeys.Count} unfinished leaf task(s) will be processed."
         );
 
         foreach (var childKey in childKeys)
@@ -77,6 +112,17 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
             if (downloadTask is null)
             {
                 ResultExtensions.EntityNotFound(nameof(DownloadTaskGeneric), childKey.Id).LogError();
+                continue;
+            }
+
+            if (!isLeafRestart && downloadTask.DownloadStatus == DownloadStatus.Completed)
+            {
+                await _dbContext.CreateDownloadClientLog(
+                    childKey,
+                    NotificationLevel.Information,
+                    DownloadStatus.Completed,
+                    "Parent restart skipped child that completed before processing."
+                );
                 continue;
             }
 
