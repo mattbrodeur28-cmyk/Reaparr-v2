@@ -29,6 +29,7 @@ export interface IDiscoverMediaIdentity {
 	tvdbId?: number | null;
 	imdbId?: string | null;
 	tmdbEnriched: boolean;
+	ownedInPlex?: boolean;
 }
 
 export interface IDiscoverSource {
@@ -142,7 +143,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v5';
+const DISCOVER_CACHE_KEY = 'discover-feed-v81';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
@@ -605,12 +606,20 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 			const best = selectBestSource(group.sources, [], false) ?? fallback;
 			const descriptor = describeIdentity(best);
 			const strongest = getStrongestGroupIdentity(group.sources) ?? descriptor;
+			const comparisonState = getAggregateComparisonState(group.sources);
+			const ownedPlexMissingVeto = comparisonState === PlexMediaComparisonState.Missing
+				&& group.sources.some((source) => source.identity?.ownedInPlex === true);
+
+			if (ownedPlexMissingVeto) {
+				return [];
+			}
+
 			const wantedBy = getWantedBy(group.sources, wantedItems);
 
 			return [{
 				key: strongest.exactKeys[0] ?? strongest.fallbackKey,
 				media: best.media,
-				comparisonState: getAggregateComparisonState(group.sources),
+				comparisonState,
 				sources: group.sources,
 				wantedByArr: wantedBy.length > 0,
 				wantedBy,

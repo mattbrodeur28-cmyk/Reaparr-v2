@@ -83,7 +83,7 @@ import { useClipboard } from '@vueuse/core';
 const dialogStore = useDialogStore();
 const updateStore = useUpdateStore();
 
-const displayVersion = 'V8.0';
+const displayVersion = 'V8.1';
 
 const { copy } = useClipboard({ legacy: true });
 

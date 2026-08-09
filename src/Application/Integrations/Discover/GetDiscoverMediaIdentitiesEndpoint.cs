@@ -27,6 +27,7 @@ public sealed class DiscoverMediaIdentityDTO
     public int? TvdbId { get; init; }
     public string? ImdbId { get; init; }
     public bool TmdbEnriched { get; set; }
+    public bool OwnedInPlex { get; set; }
 }
 
 public sealed record GetDiscoverMediaIdentitiesResponse
@@ -172,6 +173,8 @@ public sealed class GetDiscoverMediaIdentitiesEndpoint
             }
         }
 
+await MarkOwnedPlexMatchesAsync(identities, ct);
+
         await Send.OkAsync(
             new GetDiscoverMediaIdentitiesResponse
             {
@@ -182,6 +185,120 @@ public sealed class GetDiscoverMediaIdentitiesEndpoint
             },
             ct
         );
+    }
+
+    private async Task MarkOwnedPlexMatchesAsync(
+        List<DiscoverMediaIdentityDTO> identities,
+        CancellationToken ct
+    )
+    {
+        if (identities.Count == 0)
+            return;
+
+        // PlexServer.Owned is [NotMapped], so query its persisted evidence.
+        var ownedServerIds = await _dbContext
+            .PlexServers.AsNoTracking()
+            .Where(x =>
+                x.OwnedOverride == true
+                || (
+                    x.OwnedOverride == null
+                    && x.PlexAccountServers.Any(y => y.IsServerOwned)
+                )
+            )
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
+        if (ownedServerIds.Count == 0)
+            return;
+
+        var ownedMovies = await _dbContext
+            .PlexMovies.AsNoTracking()
+            .Where(x => ownedServerIds.Contains(x.PlexServerId))
+            .Select(x => new OwnedPlexIdentityRow
+            {
+                MediaType = PlexMediaType.Movie,
+                PlexGuid = x.Guid,
+                TmdbId = x.Guid_TMDB,
+                TvdbId = x.Guid_TVDB,
+                ImdbId = x.Guid_IMDB,
+            })
+            .ToListAsync(ct);
+
+        var ownedTvShows = await _dbContext
+            .PlexTvShows.AsNoTracking()
+            .Where(x => ownedServerIds.Contains(x.PlexServerId))
+            .Select(x => new OwnedPlexIdentityRow
+            {
+                MediaType = PlexMediaType.TvShow,
+                PlexGuid = x.Guid,
+                TmdbId = x.Guid_TMDB,
+                TvdbId = x.Guid_TVDB,
+                ImdbId = x.Guid_IMDB,
+            })
+            .ToListAsync(ct);
+
+        foreach (var identity in identities)
+        {
+            var candidates = identity.MediaType == PlexMediaType.Movie
+                ? ownedMovies
+                : ownedTvShows;
+
+            identity.OwnedInPlex = candidates.Any(owned =>
+                IsCanonicalOwnedMatch(identity, owned)
+            );
+        }
+    }
+
+    private static bool IsCanonicalOwnedMatch(
+        DiscoverMediaIdentityDTO remote,
+        OwnedPlexIdentityRow owned
+    )
+    {
+        if (remote.MediaType != owned.MediaType)
+            return false;
+
+        if (
+            remote.MediaType == PlexMediaType.TvShow
+            && remote.TvdbId.HasValue
+            && owned.TvdbId.HasValue
+            && remote.TvdbId.Value == owned.TvdbId.Value
+        )
+            return true;
+
+        if (
+            remote.TmdbId.HasValue
+            && owned.TmdbId.HasValue
+            && remote.TmdbId.Value == owned.TmdbId.Value
+        )
+            return true;
+
+        if (
+            !string.IsNullOrWhiteSpace(remote.ImdbId)
+            && !string.IsNullOrWhiteSpace(owned.ImdbId)
+            && string.Equals(
+                remote.ImdbId.Trim(),
+                owned.ImdbId.Trim(),
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+            return true;
+
+        return !string.IsNullOrWhiteSpace(remote.PlexGuid)
+            && !string.IsNullOrWhiteSpace(owned.PlexGuid)
+            && string.Equals(
+                remote.PlexGuid.Trim(),
+                owned.PlexGuid.Trim(),
+                StringComparison.OrdinalIgnoreCase
+            );
+    }
+
+    private sealed record OwnedPlexIdentityRow
+    {
+        public PlexMediaType MediaType { get; init; }
+        public string PlexGuid { get; init; } = string.Empty;
+        public int? TmdbId { get; init; }
+        public int? TvdbId { get; init; }
+        public string? ImdbId { get; init; }
     }
 
     private async Task<int> EnrichTmdbIdsAsync(
