@@ -41,7 +41,22 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
         if (downloadTaskKey is null)
             return ResultExtensions.EntityNotFound(nameof(DownloadTaskGeneric), command.DownloadTaskGuid).LogWarning();
 
-        var childKeys = await _dbContext.GetDownloadableChildTaskKeys(downloadTaskKey, cancellationToken);
+        var childKeys = new List<DownloadTaskKey>();
+        if (downloadTaskKey.Type is DownloadTaskType.MovieData or DownloadTaskType.EpisodeData)
+        {
+            // A restart from a movie/episode file row is a leaf retry.
+            // Never expand it back into the containing season/show.
+            childKeys.Add(downloadTaskKey);
+        }
+        else
+        {
+            childKeys.AddRange(
+                await _dbContext.GetDownloadableChildTaskKeys(
+                    downloadTaskKey,
+                    cancellationToken
+                )
+            );
+        }
 
         await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(
             downloadTaskKey,
@@ -53,7 +68,7 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
             downloadTaskKey,
             NotificationLevel.Information,
             DownloadStatus.Restarting,
-            $"Restart requested for download task group {downloadTaskKey.Id}. {childKeys.Count} child task(s) will be processed."
+            $"Restart requested for download task {downloadTaskKey.Id}. {childKeys.Count} leaf task(s) will be processed."
         );
 
         foreach (var childKey in childKeys)

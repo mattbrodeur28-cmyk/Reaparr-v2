@@ -20,6 +20,7 @@ public class DownloadQueue : IDownloadQueue
 
     private readonly Channel<int> _plexServersToCheckChannel = Channel.CreateUnbounded<int>();
     private readonly ConcurrentDictionary<Guid, DateTime> _retryCooldownUntil = new();
+    private readonly ConcurrentDictionary<int, byte> _scheduledQueueRechecks = new();
 
     private readonly CancellationToken _token = new();
 
@@ -141,11 +142,25 @@ public class DownloadQueue : IDownloadQueue
         var nextDownloadTaskResult = GetNextDownloadTask(downloadTasks);
         if (nextDownloadTaskResult.IsFailed)
         {
-            _log.Here()
-                .Information(
-                    "There are no available downloadTasks remaining for PlexServer with Id: {PlexServerName}",
-                    plexServerName
-                );
+            if (HasPendingQueueWork(downloadTasks))
+            {
+                ScheduleQueueRecheck(plexServerId);
+                _log.Here()
+                    .Debug(
+                        "Pending download work remains for PlexServer {PlexServerName}; "
+                        + "scheduled a queue recheck after the retry cooldown.",
+                        plexServerName
+                    );
+            }
+            else
+            {
+                _log.Here()
+                    .Information(
+                        "There are no available downloadTasks remaining for PlexServer with Id: {PlexServerName}",
+                        plexServerName
+                    );
+            }
+
             return Result.Ok();
         }
 
@@ -190,6 +205,14 @@ public class DownloadQueue : IDownloadQueue
         if (autoPausedTask is not null)
             return Result.Ok(autoPausedTask);
 
+        var autoMovePausedTask = FindFirstLeafByStatus(
+            downloadTasks,
+            DownloadStatus.AutoMovePaused,
+            IsInRetryCooldown
+        );
+        if (autoMovePausedTask is not null)
+            return Result.Ok(autoMovePausedTask);
+
         var serverUnreachableTask = FindFirstLeafByStatus(downloadTasks, DownloadStatus.ServerUnreachable, IsInRetryCooldown);
         if (serverUnreachableTask is not null)
             return Result.Ok(serverUnreachableTask);
@@ -207,6 +230,68 @@ public class DownloadQueue : IDownloadQueue
             return Result.Ok(queuedTask);
 
         return Result.Fail("There were no downloadTasks left to download.").LogDebug();
+    }
+
+    private static bool HasPendingQueueWork(IEnumerable<DownloadTaskGeneric> downloadTasks)
+    {
+        foreach (var downloadTask in downloadTasks)
+        {
+            if (downloadTask.Children.Any())
+            {
+                if (HasPendingQueueWork(downloadTask.Children))
+                    return true;
+
+                continue;
+            }
+
+            if (
+                downloadTask.DownloadStatus
+                is DownloadStatus.AutoPaused
+                    or DownloadStatus.AutoMovePaused
+                    or DownloadStatus.ServerUnreachable
+                    or DownloadStatus.DownloadClientError
+                    or DownloadStatus.Error
+                    or DownloadStatus.Queued
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ScheduleQueueRecheck(int plexServerId)
+    {
+        if (!_scheduledQueueRechecks.TryAdd(plexServerId, 0))
+            return;
+
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await Task.Delay(_retryCooldown + TimeSpan.FromSeconds(2), _token);
+                    _scheduledQueueRechecks.TryRemove(plexServerId, out _);
+                    await _plexServersToCheckChannel.Writer.WriteAsync(plexServerId, _token);
+                }
+                catch (OperationCanceledException) when (_token.IsCancellationRequested)
+                {
+                    _scheduledQueueRechecks.TryRemove(plexServerId, out _);
+                }
+                catch (Exception ex)
+                {
+                    _scheduledQueueRechecks.TryRemove(plexServerId, out _);
+                    _log.Here()
+                        .Error(
+                            ex,
+                            "Failed to schedule a delayed DownloadQueue recheck for PlexServer {PlexServerId}",
+                            plexServerId
+                        );
+                }
+            },
+            _token
+        );
     }
 
     private static DownloadTaskGeneric? FindFirstLeafByStatus(
@@ -237,8 +322,35 @@ public class DownloadQueue : IDownloadQueue
     {
         while (!_token.IsCancellationRequested)
         {
-            var item = await _plexServersToCheckChannel.Reader.ReadAsync(_token);
-            await CheckDownloadQueueServer(item);
+            int plexServerId;
+            try
+            {
+                plexServerId = await _plexServersToCheckChannel.Reader.ReadAsync(_token);
+            }
+            catch (OperationCanceledException) when (_token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            try
+            {
+                await CheckDownloadQueueServer(plexServerId);
+            }
+            catch (OperationCanceledException) when (_token.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _log.Here()
+                    .Error(
+                        ex,
+                        "Unhandled DownloadQueue error for PlexServer {PlexServerId}; "
+                        + "the queue will remain alive and retry.",
+                        plexServerId
+                    );
+                ScheduleQueueRecheck(plexServerId);
+            }
         }
     }
 }
