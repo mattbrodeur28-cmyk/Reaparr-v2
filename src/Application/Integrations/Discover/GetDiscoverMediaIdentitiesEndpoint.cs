@@ -28,6 +28,12 @@ public sealed class DiscoverMediaIdentityDTO
     public string? ImdbId { get; init; }
     public bool TmdbEnriched { get; set; }
     public bool OwnedInPlex { get; set; }
+    public int RemoteEpisodeCount { get; set; }
+    public int OwnedEpisodeCount { get; set; }
+    public int MissingEpisodeCount { get; set; }
+    public bool OwnedCoverageComplete { get; set; }
+    public bool OwnedCoveragePartial { get; set; }
+
 }
 
 public sealed record GetDiscoverMediaIdentitiesResponse
@@ -195,7 +201,6 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
         if (identities.Count == 0)
             return;
 
-        // PlexServer.Owned is [NotMapped], so query its persisted evidence.
         var ownedServerIds = await _dbContext
             .PlexServers.AsNoTracking()
             .Where(x =>
@@ -216,6 +221,7 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             .Where(x => ownedServerIds.Contains(x.PlexServerId))
             .Select(x => new OwnedPlexIdentityRow
             {
+                MediaId = x.Id,
                 MediaType = PlexMediaType.Movie,
                 PlexGuid = x.Guid,
                 TmdbId = x.Guid_TMDB,
@@ -229,6 +235,7 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             .Where(x => ownedServerIds.Contains(x.PlexServerId))
             .Select(x => new OwnedPlexIdentityRow
             {
+                MediaId = x.Id,
                 MediaType = PlexMediaType.TvShow,
                 PlexGuid = x.Guid,
                 TmdbId = x.Guid_TMDB,
@@ -237,15 +244,106 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             })
             .ToListAsync(ct);
 
+        var ownedTvShowMatches = new Dictionary<int, List<int>>();
+
         foreach (var identity in identities)
         {
             var candidates = identity.MediaType == PlexMediaType.Movie
                 ? ownedMovies
                 : ownedTvShows;
 
-            identity.OwnedInPlex = candidates.Any(owned =>
-                IsCanonicalOwnedMatch(identity, owned)
+            var matchingOwned = candidates
+                .Where(owned => IsCanonicalOwnedMatch(identity, owned))
+                .ToList();
+
+            identity.OwnedInPlex = matchingOwned.Count > 0;
+
+            if (identity.MediaType == PlexMediaType.Movie)
+            {
+                identity.OwnedCoverageComplete = identity.OwnedInPlex;
+                continue;
+            }
+
+            if (matchingOwned.Count > 0)
+            {
+                ownedTvShowMatches[identity.MediaId] = matchingOwned
+                    .Select(x => x.MediaId)
+                    .Distinct()
+                    .ToList();
+            }
+        }
+
+        if (ownedTvShowMatches.Count == 0)
+            return;
+
+        var remoteTvShowIds = ownedTvShowMatches.Keys.ToArray();
+        var ownedTvShowIds = ownedTvShowMatches
+            .Values
+            .SelectMany(x => x)
+            .Distinct()
+            .ToArray();
+
+        var remoteEpisodeRows = await _dbContext
+            .PlexTvShowEpisodes.AsNoTracking()
+            .Where(x => remoteTvShowIds.Contains(x.TvShowId))
+            .Select(x => new
+            {
+                x.TvShowId,
+                SeasonNumber = x.TvShowSeason!.SeasonNumber,
+                x.EpisodeNumber,
+            })
+            .ToListAsync(ct);
+
+        var ownedEpisodeRows = await _dbContext
+            .PlexTvShowEpisodes.AsNoTracking()
+            .Where(x => ownedTvShowIds.Contains(x.TvShowId))
+            .Select(x => new
+            {
+                x.TvShowId,
+                SeasonNumber = x.TvShowSeason!.SeasonNumber,
+                x.EpisodeNumber,
+            })
+            .ToListAsync(ct);
+
+        var remoteEpisodesByShow = remoteEpisodeRows
+            .GroupBy(x => x.TvShowId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.Select(y => (y.SeasonNumber, y.EpisodeNumber)).ToHashSet()
             );
+
+        var ownedEpisodesByShow = ownedEpisodeRows
+            .GroupBy(x => x.TvShowId)
+            .ToDictionary(
+                x => x.Key,
+                x => x.Select(y => (y.SeasonNumber, y.EpisodeNumber)).ToHashSet()
+            );
+
+        foreach (var identity in identities.Where(x => x.MediaType == PlexMediaType.TvShow))
+        {
+            if (!ownedTvShowMatches.TryGetValue(identity.MediaId, out var ownedMatches))
+                continue;
+
+            if (!remoteEpisodesByShow.TryGetValue(identity.MediaId, out var remoteEpisodes))
+                continue;
+
+            var ownedEpisodes = new HashSet<(int SeasonNumber, int EpisodeNumber)>();
+            foreach (var ownedShowId in ownedMatches)
+            {
+                if (ownedEpisodesByShow.TryGetValue(ownedShowId, out var episodes))
+                    ownedEpisodes.UnionWith(episodes);
+            }
+
+            var ownedRemoteEpisodes = remoteEpisodes.Count(ownedEpisodes.Contains);
+            var missingEpisodes = Math.Max(0, remoteEpisodes.Count - ownedRemoteEpisodes);
+
+            identity.RemoteEpisodeCount = remoteEpisodes.Count;
+            identity.OwnedEpisodeCount = ownedRemoteEpisodes;
+            identity.MissingEpisodeCount = missingEpisodes;
+            identity.OwnedCoverageComplete =
+                remoteEpisodes.Count > 0 && missingEpisodes == 0;
+            identity.OwnedCoveragePartial =
+                ownedRemoteEpisodes > 0 && missingEpisodes > 0;
         }
     }
 
@@ -294,6 +392,7 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
 
     private sealed record OwnedPlexIdentityRow
     {
+        public int MediaId { get; init; }
         public PlexMediaType MediaType { get; init; }
         public string PlexGuid { get; init; } = string.Empty;
         public int? TmdbId { get; init; }

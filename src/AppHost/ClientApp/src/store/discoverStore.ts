@@ -30,6 +30,12 @@ export interface IDiscoverMediaIdentity {
 	imdbId?: string | null;
 	tmdbEnriched: boolean;
 	ownedInPlex?: boolean;
+	remoteEpisodeCount?: number;
+	ownedEpisodeCount?: number;
+	missingEpisodeCount?: number;
+	ownedCoverageComplete?: boolean;
+	ownedCoveragePartial?: boolean;
+
 }
 
 export interface IDiscoverSource {
@@ -143,7 +149,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v81';
+const DISCOVER_CACHE_KEY = 'discover-feed-v813';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
@@ -598,29 +604,41 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 		}
 
 		return [...groups.values()].flatMap((group) => {
-			const fallback = group.sources[0];
+			const usefulSources = group.sources
+				.filter((source) => !(
+					source.comparisonState === PlexMediaComparisonState.Missing
+					&& source.identity?.ownedCoverageComplete === true
+				))
+				.map((source): IDiscoverSource => {
+					if (
+						source.comparisonState === PlexMediaComparisonState.Missing
+						&& source.identity?.ownedCoveragePartial === true
+					) {
+						return {
+							...source,
+							comparisonState: PlexMediaComparisonState.Partial,
+						};
+					}
+
+					return source;
+				});
+
+			const fallback = usefulSources[0];
 			if (!fallback) {
 				return [];
 			}
 
-			const best = selectBestSource(group.sources, [], false) ?? fallback;
+			const best = selectBestSource(usefulSources, [], false) ?? fallback;
 			const descriptor = describeIdentity(best);
-			const strongest = getStrongestGroupIdentity(group.sources) ?? descriptor;
-			const comparisonState = getAggregateComparisonState(group.sources);
-			const ownedPlexMissingVeto = comparisonState === PlexMediaComparisonState.Missing
-				&& group.sources.some((source) => source.identity?.ownedInPlex === true);
-
-			if (ownedPlexMissingVeto) {
-				return [];
-			}
-
-			const wantedBy = getWantedBy(group.sources, wantedItems);
+			const strongest = getStrongestGroupIdentity(usefulSources) ?? descriptor;
+			const comparisonState = getAggregateComparisonState(usefulSources);
+			const wantedBy = getWantedBy(usefulSources, wantedItems);
 
 			return [{
 				key: strongest.exactKeys[0] ?? strongest.fallbackKey,
 				media: best.media,
 				comparisonState,
-				sources: group.sources,
+				sources: usefulSources,
 				wantedByArr: wantedBy.length > 0,
 				wantedBy,
 				identityBasis: strongest.basis,
