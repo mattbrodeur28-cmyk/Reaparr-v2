@@ -1,5 +1,5 @@
 <template>
-	<QSection header="TMDB">
+	<QSection>
 		<QAlert type="info">
 			TMDB is optional. Reaparr already stores Plex TMDB, TVDB, IMDb and Plex GUID values; this token is used to enrich media that is missing a TMDB ID.
 		</QAlert>

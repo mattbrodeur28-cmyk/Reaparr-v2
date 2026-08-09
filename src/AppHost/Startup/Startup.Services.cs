@@ -207,8 +207,6 @@ public static partial class Startup
         services.RegisterPlexThumbnailHttpClient();
         services.RegisterGitHubHttpClient(appRuntimeInfo);
 
-        // V7: bounded missing/upgrade automation scheduler.
-        services.AddHostedService<MediaAutomationWorker>();
 
         // Removing all registered IHttpMessageHandlerBuilderFilter instances to disable built-in HttpClient logging
         services.RemoveAll<IHttpMessageHandlerBuilderFilter>();

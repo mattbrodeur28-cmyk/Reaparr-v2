@@ -1,5 +1,5 @@
 <template>
-	<QSection :header="t('components.radarr-integration.title')">
+	<QSection>
 		<QAlert
 			:type="settingsStore.networkSettings.reverseProxyUrl ? 'info' : 'warning'"
 			to="/settings/advanced#reverse-proxy-settings">

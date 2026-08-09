@@ -326,8 +326,8 @@
 								no-caps
 								rounded
 								icon="mdi-format-list-checks"
-								label="Review missing / upgrades"
-								@click.stop="openTvFixPlan(item)" />
+								label="Review episodes"
+								@click.stop="openTvSeriesDetails(item)" />
 						</div>
 
 						<div class="discover-card-v5__source">
@@ -402,10 +402,6 @@
 			</div>
 		</template>
 
-		<DiscoverTvFixDialog
-			v-model="tvFixDialogOpen"
-			:item="selectedTvItem"
-			@queued="onTvFixQueued" />
 		<MediaComparisonDetailsDialog />
 		<DownloadConfirmation @download="downloadStore.downloadMedia($event)" />
 	</q-page>
@@ -430,7 +426,6 @@ import {
 	useSettingsStore,
 } from '@store';
 import type { IDiscoverItem } from '@/store/discoverStore';
-import DiscoverTvFixDialog from '@/components/Views/Discover/DiscoverTvFixDialog.vue';
 
 const discoverStore = useDiscoverStore();
 const downloadStore = useDownloadStore();
@@ -446,8 +441,6 @@ const reasonFilter = ref<'all' | 'missing' | 'upgrades'>('all');
 const wantedOnly = useLocalStorage('reaparr-discover-wanted-only', true);
 const pageSize = useLocalStorage<number>('reaparr-discover-page-size', 100);
 const page = ref(1);
-const tvFixDialogOpen = ref(false);
-const selectedTvItem = ref<IDiscoverItem | null>(null);
 
 const pageSizeOptions = [
 	{ label: '25', value: 25 },
@@ -737,7 +730,7 @@ function qualityLabel(media: PlexMediaSlimDTO): string {
 
 function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 	if (item.media.type === PlexMediaType.TvShow) {
-		openTvFixPlan(item);
+		openTvSeriesDetails(item);
 		return;
 	}
 
@@ -782,14 +775,17 @@ function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 	});
 }
 
-function openTvFixPlan(item: IDiscoverItem) {
-	selectedTvItem.value = item;
-	tvFixDialogOpen.value = true;
-}
+function openTvSeriesDetails(item: IDiscoverItem) {
+	const bestSource = discoverStore.selectBestSource(item, [], true);
+	if (!bestSource) {
+		$q.notify({
+			type: 'warning',
+			message: 'No online source is currently available for this series.',
+		});
+		return;
+	}
 
-function onTvFixQueued() {
-	// Keep the current cached feed visible while Reaparr creates exact episode tasks.
-	// V6 reconciliation will refresh owned Plex state after completed moves.
+	openMediaDetails(bestSource.media);
 }
 
 function openMediaDetails(mediaItem: PlexMediaSlimDTO) {
