@@ -318,6 +318,13 @@
 						</div>
 
 						<div
+							v-if="item.media.type === PlexMediaType.TvShow && tvCoverageLabel(item)"
+							class="discover-tv-coverage">
+							<q-icon name="mdi-television-classic" />
+							{{ tvCoverageLabel(item) }}
+						</div>
+
+						<div
 							v-if="item.media.type === PlexMediaType.TvShow"
 							class="discover-tv-repair-cta">
 							<q-btn
@@ -327,7 +334,7 @@
 								rounded
 								icon="mdi-format-list-checks"
 								label="Review episodes"
-								@click.stop="openTvSeriesDetails(item)" />
+								@click.stop="reviewTvEpisodes(item)" />
 						</div>
 
 						<div class="discover-card-v5__source">
@@ -402,12 +409,179 @@
 			</div>
 		</template>
 
+		<q-dialog v-model="tvEpisodeDialogOpen">
+			<q-card class="discover-tv-plan-dialog">
+				<q-card-section class="discover-tv-plan-header">
+					<div>
+						<div class="text-overline text-grey-5">
+							Exact episode coverage
+						</div>
+						<div class="text-h5 text-weight-bold">
+							{{ tvEpisodePlan?.seriesTitle || tvEpisodeDialogItem?.media.title || 'TV series' }}
+						</div>
+					</div>
+					<q-btn
+						v-close-popup
+						flat
+						round
+						dense
+						icon="mdi-close" />
+				</q-card-section>
+
+				<q-separator />
+
+				<q-card-section
+					v-if="tvEpisodePlanLoading"
+					class="discover-tv-plan-loading">
+					<QSpinner size="42px" />
+					<div>Comparing exact season and episode numbers…</div>
+				</q-card-section>
+
+				<q-card-section v-else-if="tvEpisodePlan">
+					<div class="discover-tv-plan-summary">
+						<q-chip
+							dense
+							icon="mdi-television-play">
+							{{ tvEpisodePlan.remoteEpisodeCount }} remote
+						</q-chip>
+						<q-chip
+							dense
+							color="positive"
+							text-color="white"
+							icon="mdi-check-circle-outline">
+							{{ tvEpisodePlan.ownedEpisodeCount }} owned
+						</q-chip>
+						<q-chip
+							dense
+							color="primary"
+							text-color="white"
+							icon="mdi-download-outline">
+							{{ tvEpisodePlan.missingEpisodeCount }} missing
+						</q-chip>
+					</div>
+
+					<q-banner
+						v-for="warning in tvEpisodePlan.warnings"
+						:key="warning"
+						class="v5-banner v5-banner--warning q-mb-sm">
+						{{ warning }}
+					</q-banner>
+
+					<template v-if="tvEpisodePlan.missingEpisodes.length">
+						<div class="discover-tv-plan-toolbar">
+							<div>
+								<strong>{{ selectedTvEpisodeKeys.length }}</strong>
+								of {{ tvEpisodePlan.missingEpisodeCount }} missing episodes selected
+							</div>
+							<div class="row q-gutter-sm">
+								<q-btn
+									flat
+									dense
+									no-caps
+									label="Select all"
+									@click="selectAllTvMissing" />
+								<q-btn
+									flat
+									dense
+									no-caps
+									label="Clear"
+									@click="clearTvEpisodeSelection" />
+							</div>
+						</div>
+
+						<div class="discover-tv-plan-list">
+							<label
+								v-for="episode in tvEpisodePlan.missingEpisodes"
+								:key="tvEpisodeKey(episode)"
+								class="discover-tv-plan-row"
+								:class="{ 'discover-tv-plan-row--offline': !tvEpisodeHasOnlineCandidate(episode) }">
+								<q-checkbox
+									v-model="selectedTvEpisodeKeys"
+									:val="tvEpisodeKey(episode)"
+									:disable="!tvEpisodeHasOnlineCandidate(episode)" />
+								<div class="discover-tv-plan-row__content">
+									<div class="discover-tv-plan-row__title">
+										<span class="discover-tv-plan-code">
+											{{ formatEpisodeCode(episode) }}
+										</span>
+										{{ episode.title || 'Episode' }}
+									</div>
+									<div class="discover-tv-plan-row__meta">
+										<span>Missing from owned Plex</span>
+										<span>• {{ episode.candidates.length }} remote source{{ episode.candidates.length === 1 ? '' : 's' }}</span>
+										<span v-if="!tvEpisodeHasOnlineCandidate(episode)">• no online source</span>
+									</div>
+								</div>
+							</label>
+						</div>
+					</template>
+
+					<div
+						v-else
+						class="discover-tv-plan-empty">
+						<q-icon
+							name="mdi-check-decagram-outline"
+							size="46px"
+							color="positive" />
+						<div class="text-h6 q-mt-md">
+							No missing episodes
+						</div>
+						<div class="text-body2 text-grey-5 q-mt-xs">
+							Every remote episode in the current source set is already present in your owned Plex libraries. If this card is an upgrade opportunity, review quality upgrades from the normal series details page.
+						</div>
+					</div>
+				</q-card-section>
+
+				<q-card-section
+					v-else
+					class="discover-tv-plan-empty">
+					<q-icon
+						name="mdi-alert-circle-outline"
+						size="46px"
+						color="warning" />
+					<div class="text-h6 q-mt-md">
+						Episode comparison unavailable
+					</div>
+					<div class="text-body2 text-grey-5 q-mt-xs">
+						{{ tvEpisodePlanError || 'Reaparr did not queue anything.' }}
+					</div>
+				</q-card-section>
+
+				<q-separator />
+
+				<QCardActions align="right">
+					<q-btn
+						v-close-popup
+						flat
+						no-caps
+						label="Close" />
+					<q-btn
+						v-if="tvEpisodePlan && tvEpisodePlan.missingEpisodeCount === 0 && tvEpisodeDialogItem"
+						flat
+						no-caps
+						icon="mdi-open-in-new"
+						label="Open series details"
+						@click="openTvSeriesDetailsFromDialog" />
+					<q-btn
+						v-if="tvEpisodePlan?.missingEpisodes.length"
+						unelevated
+						no-caps
+						color="primary"
+						icon="mdi-download"
+						:label="`Download ${selectedTvEpisodeKeys.length} missing`"
+						:disable="selectedTvEpisodeKeys.length === 0"
+						@click="downloadSelectedTvEpisodes" />
+				</QCardActions>
+			</q-card>
+		</q-dialog>
+
 		<MediaComparisonDetailsDialog />
 		<DownloadConfirmation @download="handleConfirmedDownload" />
 	</q-page>
 </template>
 
 <script setup lang="ts">
+import Axios from 'axios';
 import { get, set, useLocalStorage } from '@vueuse/core';
 import { useQuasar } from 'quasar';
 import { useSubscription } from '@vueuse/rxjs';
@@ -425,7 +599,7 @@ import {
 	useServerStore,
 	useSettingsStore,
 } from '@store';
-import type { IDiscoverItem } from '@/store/discoverStore';
+import type { IDiscoverItem, IDiscoverSource } from '@/store/discoverStore';
 
 const discoverStore = useDiscoverStore();
 const downloadStore = useDownloadStore();
@@ -443,6 +617,44 @@ const pageSize = useLocalStorage<number>('reaparr-discover-page-size', 100);
 const page = ref(1);
 const submittingItemKeys = ref<Record<string, number>>({});
 const pendingConfirmationItemKey = ref<string | null>(null);
+
+interface IDiscoverTvEpisodeCandidate {
+	mediaId: number;
+	remoteTvShowId: number;
+	plexServerId: number;
+	plexLibraryId: number;
+}
+
+interface IDiscoverTvMissingEpisode {
+	seasonNumber: number;
+	episodeNumber: number;
+	title: string;
+	candidates: IDiscoverTvEpisodeCandidate[];
+}
+
+interface IDiscoverTvEpisodePlanResponse {
+	seriesTitle: string;
+	remoteSourceCount: number;
+	remoteEpisodeCount: number;
+	ownedEpisodeCount: number;
+	missingEpisodeCount: number;
+	missingEpisodes: IDiscoverTvMissingEpisode[];
+	warnings: string[];
+}
+
+interface ITvEpisodeDownloadGroup {
+	source: IDiscoverSource;
+	remoteTvShowId: number;
+	mediaIds: number[];
+}
+
+const tvEpisodeDialogOpen = ref(false);
+const tvEpisodePlanLoading = ref(false);
+const tvEpisodePlanError = ref('');
+const tvEpisodeDialogItem = ref<IDiscoverItem | null>(null);
+const tvEpisodePlan = ref<IDiscoverTvEpisodePlanResponse | null>(null);
+const selectedTvEpisodeKeys = ref<string[]>([]);
+const pendingConfirmationTvContext = ref<{ plexServerId: number; tvShowId: number } | null>(null);
 
 const pageSizeOptions = [
 	{ label: '25', value: 25 },
@@ -681,6 +893,15 @@ function handleConfirmedDownload(
 	}
 
 	pendingConfirmationItemKey.value = null;
+
+	if (pendingConfirmationTvContext.value) {
+		downloadStore.setDiscoverTvShowRequestContext(
+			pendingConfirmationTvContext.value.plexServerId,
+			pendingConfirmationTvContext.value.tvShowId,
+		);
+	}
+	pendingConfirmationTvContext.value = null;
+
 	downloadStore.downloadMedia(request);
 }
 
@@ -749,6 +970,23 @@ function identityLabel(item: IDiscoverItem): string {
 	}
 }
 
+function tvCoverageLabel(item: IDiscoverItem): string {
+	const coverage = item.sources
+		.map((source) => source.identity)
+		.filter((identity) => Boolean(identity?.remoteEpisodeCount))
+		.sort((a, b) => (b?.remoteEpisodeCount ?? 0) - (a?.remoteEpisodeCount ?? 0))[0];
+
+	if (!coverage?.remoteEpisodeCount) {
+		return '';
+	}
+
+	const owned = coverage.ownedEpisodeCount ?? 0;
+	const missing = coverage.missingEpisodeCount
+		?? Math.max(0, coverage.remoteEpisodeCount - owned);
+
+	return `${owned} / ${coverage.remoteEpisodeCount} owned • ${missing} missing`;
+}
+
 function qualityLabel(media: PlexMediaSlimDTO): string {
 	switch (discoverStore.getBestQuality(media)) {
 		case VideoQuality.UHD_8K:
@@ -780,7 +1018,7 @@ function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 	}
 
 	if (item.media.type === PlexMediaType.TvShow) {
-		openTvSeriesDetails(item);
+		void reviewTvEpisodes(item);
 		return;
 	}
 
@@ -825,6 +1063,220 @@ function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 		destinationFolderPathId: null,
 		downloadMedias: smartCommand,
 	});
+}
+
+async function reviewTvEpisodes(item: IDiscoverItem): Promise<void> {
+	tvEpisodeDialogItem.value = item;
+	tvEpisodeDialogOpen.value = true;
+	tvEpisodePlanLoading.value = true;
+	tvEpisodePlanError.value = '';
+	tvEpisodePlan.value = null;
+	selectedTvEpisodeKeys.value = [];
+
+	try {
+		const response = await Axios.post<IDiscoverTvEpisodePlanResponse>(
+			'/api/Integration/Discover/TvEpisodePlan',
+			{
+				identityBasis: item.identityBasis,
+				sources: item.sources.map((source) => ({
+					mediaId: source.media.id,
+					plexServerId: source.media.plexServerId,
+					tvdbId: source.identity?.tvdbId ?? null,
+					tmdbId: source.identity?.tmdbId ?? null,
+					imdbId: source.identity?.imdbId ?? null,
+					plexGuid: source.identity?.plexGuid ?? '',
+				})),
+			},
+		);
+
+		tvEpisodePlan.value = response.data;
+		selectedTvEpisodeKeys.value = response.data.missingEpisodes
+			.filter((episode) => tvEpisodeHasOnlineCandidate(episode, item))
+			.map(tvEpisodeKey);
+	} catch {
+		tvEpisodePlanError.value = 'Exact episode comparison could not be loaded.';
+		$q.notify({
+			type: 'warning',
+			message: 'Exact episode comparison failed. Reaparr did not queue the TV show.',
+		});
+	} finally {
+		tvEpisodePlanLoading.value = false;
+	}
+}
+
+function tvEpisodeKey(episode: IDiscoverTvMissingEpisode): string {
+	return `${episode.seasonNumber}:${episode.episodeNumber}`;
+}
+
+function formatEpisodeCode(episode: IDiscoverTvMissingEpisode): string {
+	return `S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`;
+}
+
+function selectBestTvEpisodeCandidate(
+	episode: IDiscoverTvMissingEpisode,
+	item: IDiscoverItem,
+): IDiscoverTvEpisodeCandidate | null {
+	const candidateSourceKeys = new Set(
+		episode.candidates.map((candidate) =>
+			`${candidate.plexServerId}:${candidate.remoteTvShowId}`,
+		),
+	);
+
+	const eligibleSources = item.sources.filter((source) =>
+		candidateSourceKeys.has(`${source.media.plexServerId}:${source.media.id}`),
+	);
+
+	if (!eligibleSources.length) {
+		return null;
+	}
+
+	const bestSource = discoverStore.selectBestSource(
+		{ ...item, sources: eligibleSources },
+		[],
+		true,
+	);
+
+	if (!bestSource) {
+		return null;
+	}
+
+	return episode.candidates.find((candidate) =>
+		candidate.plexServerId === bestSource.media.plexServerId
+		&& candidate.remoteTvShowId === bestSource.media.id,
+	) ?? null;
+}
+
+function tvEpisodeHasOnlineCandidate(
+	episode: IDiscoverTvMissingEpisode,
+	item: IDiscoverItem | null = tvEpisodeDialogItem.value,
+): boolean {
+	return Boolean(item && selectBestTvEpisodeCandidate(episode, item));
+}
+
+function selectAllTvMissing(): void {
+	const item = tvEpisodeDialogItem.value;
+	const plan = tvEpisodePlan.value;
+	if (!item || !plan) {
+		selectedTvEpisodeKeys.value = [];
+		return;
+	}
+
+	selectedTvEpisodeKeys.value = plan.missingEpisodes
+		.filter((episode) => tvEpisodeHasOnlineCandidate(episode, item))
+		.map(tvEpisodeKey);
+}
+
+function clearTvEpisodeSelection(): void {
+	selectedTvEpisodeKeys.value = [];
+}
+
+function downloadSelectedTvEpisodes(): void {
+	const item = tvEpisodeDialogItem.value;
+	const plan = tvEpisodePlan.value;
+	if (!item || !plan) {
+		return;
+	}
+
+	const selected = new Set(selectedTvEpisodeKeys.value);
+	const groups = new Map<string, ITvEpisodeDownloadGroup>();
+	let skipped = 0;
+	let firstContext: { plexServerId: number; tvShowId: number } | null = null;
+
+	for (const episode of plan.missingEpisodes) {
+		if (!selected.has(tvEpisodeKey(episode))) {
+			continue;
+		}
+
+		const candidate = selectBestTvEpisodeCandidate(episode, item);
+		if (!candidate) {
+			skipped++;
+			continue;
+		}
+
+		const source = item.sources.find((itemSource) =>
+			itemSource.media.plexServerId === candidate.plexServerId
+			&& itemSource.media.id === candidate.remoteTvShowId,
+		);
+
+		if (!source) {
+			skipped++;
+			continue;
+		}
+
+		firstContext ??= {
+			plexServerId: candidate.plexServerId,
+			tvShowId: candidate.remoteTvShowId,
+		};
+
+		const groupKey = `${candidate.plexServerId}:${candidate.plexLibraryId}`;
+		const group = groups.get(groupKey);
+		if (group) {
+			group.mediaIds.push(candidate.mediaId);
+		} else {
+			groups.set(groupKey, {
+				source,
+				remoteTvShowId: candidate.remoteTvShowId,
+				mediaIds: [candidate.mediaId],
+			});
+		}
+	}
+
+	const commands: DownloadMediaDTO[] = [...groups.values()].map((group) => ({
+		type: PlexMediaType.Episode,
+		mediaIds: group.mediaIds,
+		plexLibraryId: group.source.media.plexLibraryId,
+		plexServerId: group.source.media.plexServerId,
+		qualities: group.source.media.qualities,
+		keepCompletedInDownloadFolder: settingsStore.downloadManagerSettings.keepCompletedInDownloadFolder,
+	}));
+
+	if (!commands.length) {
+		$q.notify({
+			type: 'warning',
+			message: 'None of the selected missing episodes currently has an online source.',
+		});
+		return;
+	}
+
+	if (skipped > 0) {
+		$q.notify({
+			type: 'warning',
+			message: `${skipped} selected episode${skipped === 1 ? '' : 's'} no longer has an online source and was skipped.`,
+		});
+	}
+
+	tvEpisodeDialogOpen.value = false;
+
+	if (settingsStore.isConfirmationEnabled(PlexMediaType.Episode)) {
+		pendingConfirmationItemKey.value = item.key;
+		pendingConfirmationTvContext.value = firstContext;
+		dialogStore.openMediaConfirmationDownloadDialog(commands);
+		return;
+	}
+
+	markItemSubmitting(item.key);
+	if (firstContext) {
+		downloadStore.setDiscoverTvShowRequestContext(
+			firstContext.plexServerId,
+			firstContext.tvShowId,
+		);
+	}
+
+	downloadStore.downloadMedia({
+		customDestinationFolderPath: '',
+		destinationFolderPathId: null,
+		downloadMedias: commands,
+	});
+}
+
+function openTvSeriesDetailsFromDialog(): void {
+	const item = tvEpisodeDialogItem.value;
+	if (!item) {
+		return;
+	}
+
+	tvEpisodeDialogOpen.value = false;
+	openTvSeriesDetails(item);
 }
 
 function openTvSeriesDetails(item: IDiscoverItem) {
@@ -1532,5 +1984,105 @@ onMounted(() => {
   .discover-card-v5:hover {
     transform: none;
   }
+}
+
+.discover-tv-coverage {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--v5-text-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.discover-tv-plan-dialog {
+  width: min(760px, calc(100vw - 28px));
+  max-width: 760px;
+  max-height: min(84vh, 900px);
+  border: 1px solid var(--v5-border);
+  border-radius: 24px;
+  background: var(--v5-surface);
+}
+
+.discover-tv-plan-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.discover-tv-plan-loading,
+.discover-tv-plan-empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 42px 24px;
+  text-align: center;
+}
+
+.discover-tv-plan-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.discover-tv-plan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0;
+}
+
+.discover-tv-plan-list {
+  max-height: 52vh;
+  overflow-y: auto;
+  border: 1px solid var(--v5-border);
+  border-radius: 16px;
+}
+
+.discover-tv-plan-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.discover-tv-plan-row + .discover-tv-plan-row {
+  border-top: 1px solid var(--v5-border);
+}
+
+.discover-tv-plan-row--offline {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.discover-tv-plan-row__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.discover-tv-plan-row__title {
+  font-weight: 700;
+}
+
+.discover-tv-plan-code {
+  display: inline-block;
+  min-width: 58px;
+  margin-right: 6px;
+  color: var(--v5-accent-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.discover-tv-plan-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+  color: var(--v5-text-muted);
+  font-size: 0.78rem;
 }
 </style>

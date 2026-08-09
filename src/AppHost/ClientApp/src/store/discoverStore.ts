@@ -149,7 +149,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v813';
+const DISCOVER_CACHE_KEY = 'discover-feed-v82';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {

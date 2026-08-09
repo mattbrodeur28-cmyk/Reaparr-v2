@@ -273,10 +273,15 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             }
         }
 
-        if (ownedTvShowMatches.Count == 0)
+        var remoteTvShowIds = identities
+            .Where(x => x.MediaType == PlexMediaType.TvShow)
+            .Select(x => x.MediaId)
+            .Distinct()
+            .ToArray();
+
+        if (remoteTvShowIds.Length == 0)
             return;
 
-        var remoteTvShowIds = ownedTvShowMatches.Keys.ToArray();
         var ownedTvShowIds = ownedTvShowMatches
             .Values
             .SelectMany(x => x)
@@ -319,30 +324,31 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
                 x => x.Select(y => (y.SeasonNumber, y.EpisodeNumber)).ToHashSet()
             );
 
-        foreach (var identity in identities.Where(x => x.MediaType == PlexMediaType.TvShow))
+        foreach (var identityItem in identities.Where(x => x.MediaType == PlexMediaType.TvShow))
         {
-            if (!ownedTvShowMatches.TryGetValue(identity.MediaId, out var ownedMatches))
-                continue;
-
-            if (!remoteEpisodesByShow.TryGetValue(identity.MediaId, out var remoteEpisodes))
+            if (!remoteEpisodesByShow.TryGetValue(identityItem.MediaId, out var remoteEpisodes))
                 continue;
 
             var ownedEpisodes = new HashSet<(int SeasonNumber, int EpisodeNumber)>();
-            foreach (var ownedShowId in ownedMatches)
+            if (
+                ownedTvShowMatches.TryGetValue(identityItem.MediaId, out var ownedMatches)
+            )
             {
-                if (ownedEpisodesByShow.TryGetValue(ownedShowId, out var episodes))
-                    ownedEpisodes.UnionWith(episodes);
+                foreach (var ownedShowId in ownedMatches)
+                {
+                    if (ownedEpisodesByShow.TryGetValue(ownedShowId, out var episodes))
+                        ownedEpisodes.UnionWith(episodes);
+                }
             }
 
             var ownedRemoteEpisodes = remoteEpisodes.Count(ownedEpisodes.Contains);
             var missingEpisodes = Math.Max(0, remoteEpisodes.Count - ownedRemoteEpisodes);
-
-            identity.RemoteEpisodeCount = remoteEpisodes.Count;
-            identity.OwnedEpisodeCount = ownedRemoteEpisodes;
-            identity.MissingEpisodeCount = missingEpisodes;
-            identity.OwnedCoverageComplete =
+            identityItem.RemoteEpisodeCount = remoteEpisodes.Count;
+            identityItem.OwnedEpisodeCount = ownedRemoteEpisodes;
+            identityItem.MissingEpisodeCount = missingEpisodes;
+            identityItem.OwnedCoverageComplete =
                 remoteEpisodes.Count > 0 && missingEpisodes == 0;
-            identity.OwnedCoveragePartial =
+            identityItem.OwnedCoveragePartial =
                 ownedRemoteEpisodes > 0 && missingEpisodes > 0;
         }
     }
