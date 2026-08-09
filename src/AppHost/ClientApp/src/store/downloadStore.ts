@@ -1,6 +1,7 @@
 import Log from 'consola';
 import { acceptHMRUpdate, defineStore } from 'pinia';
 import { reactive, computed, toRefs } from 'vue';
+import { get, set, useLocalStorage } from '@vueuse/core';
 import { map, switchMap, tap } from 'rxjs/operators';
 import type { Observable } from 'rxjs';
 import { of } from 'rxjs';
@@ -39,6 +40,63 @@ export const useDownloadStore = defineStore(StoreNames.DownloadStore, () => {
 	const serverStore = useServerStore();
 	const { $i18n } = useNuxtApp();
 	const { t } = $i18n;
+
+	const recentDownloadRequests = useLocalStorage<Record<string, number>>(
+		'reaparr-recent-download-requests-v8',
+		{},
+	);
+	const recentDownloadRequestTtlMs = 12 * 60 * 60 * 1000;
+	let pendingDiscoverTvShowContext: { plexServerId: number; mediaId: number } | null = null;
+
+	function setDiscoverTvShowRequestContext(plexServerId: number, mediaId: number): void {
+		pendingDiscoverTvShowContext = { plexServerId, mediaId };
+	}
+
+	function recentDownloadRequestKey(plexServerId: number, mediaId: number): string {
+		return `${plexServerId}:${mediaId}`;
+	}
+
+	function pruneRecentDownloadRequests(): void {
+		const now = Date.now();
+		const current = get(recentDownloadRequests);
+		const next = Object.fromEntries(
+			Object.entries(current).filter(([, timestamp]) =>
+				now - timestamp < recentDownloadRequestTtlMs,
+			),
+		);
+
+		if (Object.keys(next).length !== Object.keys(current).length) {
+			set(recentDownloadRequests, next);
+		}
+	}
+
+	function rememberSuccessfulDownloadRequest(
+		request: CreateDownloadTasksRequest,
+		tvShowContext: { plexServerId: number; mediaId: number } | null,
+	): void {
+		pruneRecentDownloadRequests();
+		const now = Date.now();
+		const next = { ...get(recentDownloadRequests) };
+
+		for (const media of request.downloadMedias ?? []) {
+			for (const mediaId of media.mediaIds ?? []) {
+				next[recentDownloadRequestKey(media.plexServerId, mediaId)] = now;
+			}
+		}
+
+		if (tvShowContext) {
+			next[recentDownloadRequestKey(tvShowContext.plexServerId, tvShowContext.mediaId)] = now;
+		}
+
+		set(recentDownloadRequests, next);
+	}
+
+	function isMediaRecentlyRequested(plexServerId: number, mediaId: number): boolean {
+		pruneRecentDownloadRequests();
+		return Boolean(
+			get(recentDownloadRequests)[recentDownloadRequestKey(plexServerId, mediaId)],
+		);
+	}
 
 	// Actions
 	const actions = {
@@ -180,10 +238,14 @@ export const useDownloadStore = defineStore(StoreNames.DownloadStore, () => {
 			}));
 		},
 		downloadMedia(request: CreateDownloadTasksRequest): void {
+			const tvShowContext = pendingDiscoverTvShowContext;
+			pendingDiscoverTvShowContext = null;
+
 			downloadApi
 				.createDownloadTasksEndpoint(request)
 				.pipe(tap((result) => {
 					if (result.isSuccess && result.value) {
+						rememberSuccessfulDownloadRequest(request, tvShowContext);
 						const { movies, tvShows, seasons, episodes } = result.value;
 						let message = t('general.download-notification.unknown');
 						if (movies > 0 && tvShows > 0) {
@@ -430,7 +492,11 @@ export const useDownloadStore = defineStore(StoreNames.DownloadStore, () => {
 	};
 
 	return {
-		...toRefs(state), ...actions, ...getters,
+		...toRefs(state),
+		...actions,
+		...getters,
+		isMediaRecentlyRequested,
+		setDiscoverTvShowRequestContext,
 	};
 });
 

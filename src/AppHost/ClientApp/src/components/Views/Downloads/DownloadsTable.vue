@@ -9,7 +9,7 @@
 				align="center"
 				class="full-width relative-position">
 				<!-- Download Server Title -->
-				<QCol class="q-px-md absolute-center row items-center no-wrap">
+				<QCol class="q-px-md row items-center no-wrap v8-download-server-title">
 					<QStatus :value="serverConnectionStore.isServerConnected(plexServer.id)" />
 					<span
 						class="title q-ml-md"
@@ -52,44 +52,51 @@
 		</template>
 		<template #default>
 			<!-- Download Table Per Server -->
-			<QTreeTable
-				:nodes="nodes"
-				:columns="getDownloadTableColumns"
-				:selection-keys="downloadStore.getSelectedDownloadTasks(plexServer.id)"
-				@selected="downloadStore.updateSelectedDownloadTasks(plexServer.id, $event)">
-				<template #cell-title="{ data }: { data: IDownloadTableNode }">
-					<QMediaTypeIcon
-						v-if="data.mediaType"
-						:media-type="data.mediaType"
-						class="q-mr-sm"
-						:size="26" />
-					<QText
-						:cy="`column-title-${data.id}`"
-						:value="data.title" />
-				</template>
-				<template #cell-status="{ data }: { data: IDownloadTableNode }">
-					<QText
-						:cy="`column-status-${data.id}`"
-						:value="translateDownloadStatus(data.status)" />
-				</template>
-				<template #cell-actions="{ data }: { data: IDownloadTableNode }">
-					<QRow
-						justify="start"
-						no-wrap>
-						<QCol cols="auto">
-							<IconSquareButton
-								v-for="action in data.actions"
-								:key="`${data.id}-${kebabCase(action.type)}`"
-								:cy="`column-actions-${kebabCase(action.type)}-${data.id}`"
-								:disabled="action.disabled"
-								:icon="toButtonIcon(action.type)"
-								:loading="action.loading"
-								dense
-								@click.stop="onTableAction({ action: action.type, data })" />
-						</QCol>
-					</QRow>
-				</template>
-			</QTreeTable>
+			<div
+				ref="tableHost"
+				class="v8-download-table-host">
+				<QTreeTable
+					class="v8-download-tree-table"
+					:nodes="nodes"
+					:columns="getDownloadTableColumns"
+					:selection-keys="downloadStore.getSelectedDownloadTasks(plexServer.id)"
+					@selected="downloadStore.updateSelectedDownloadTasks(plexServer.id, $event)">
+					<template #cell-title="{ data }: { data: IDownloadTableNode }">
+						<QMediaTypeIcon
+							v-if="data.mediaType"
+							:media-type="data.mediaType"
+							class="q-mr-sm"
+							:size="26" />
+						<QText
+							:cy="`column-title-${data.id}`"
+							class="v8-download-title-text"
+							:value="data.title" />
+					</template>
+					<template #cell-status="{ data }: { data: IDownloadTableNode }">
+						<QText
+							:cy="`column-status-${data.id}`"
+							class="v8-download-status-text"
+							:value="translateDownloadStatus(data.status)" />
+					</template>
+					<template #cell-actions="{ data }: { data: IDownloadTableNode }">
+						<QRow
+							justify="start"
+							no-wrap>
+							<QCol cols="auto">
+								<IconSquareButton
+									v-for="action in data.actions"
+									:key="`${data.id}-${kebabCase(action.type)}`"
+									:cy="`column-actions-${kebabCase(action.type)}-${data.id}`"
+									:disabled="action.disabled"
+									:icon="toButtonIcon(action.type)"
+									:loading="action.loading"
+									dense
+									@click.stop="onTableAction({ action: action.type, data })" />
+							</QCol>
+						</QRow>
+					</template>
+				</QTreeTable>
+			</div>
 		</template>
 	</q-expansion-item>
 
@@ -103,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { get, set } from '@vueuse/core';
+import { get, set, useElementSize } from '@vueuse/core';
 import type { TreeNode } from 'primevue/treenode';
 import type { DownloadProgressDTO, PlexServerDTO } from '@dto';
 import { DownloadActions, DownloadStatus } from '@dto';
@@ -136,6 +143,8 @@ const loadingIds = ref<{
 }[]>([]);
 const isExpanded = ref(true);
 const clearCompletedLoading = ref(false);
+const tableHost = ref<HTMLElement | null>(null);
+const { width: tableWidth } = useElementSize(tableHost);
 
 const props = defineProps<{
 	loading?: boolean;
@@ -181,62 +190,94 @@ function mapToTreeNodes(value: DownloadProgressDTO[]): DownloadTreeNode[] {
 	}) ?? [];
 }
 
-const getDownloadTableColumns: QTreeTableColumn[] = [
-	{
-		header: t('components.downloads-table.columns.title'),
-		field: 'title',
-	},
-	{
-		header: t('components.downloads-table.columns.status'),
-		field: 'status',
-		type: QTreeTableColumnType.Custom,
-		align: 'right',
-		width: 200,
-	},
-	{
-		header: t('components.downloads-table.columns.data-received'),
-		field: 'dataReceived',
-		type: QTreeTableColumnType.FileSize,
-		align: 'right',
-		width: 120,
-	},
-	{
-		header: t('components.downloads-table.columns.data-total'),
-		field: 'dataTotal',
-		type: QTreeTableColumnType.FileSize,
-		width: 120,
-		align: 'right',
-	},
-	{
-		header: t('components.downloads-table.columns.speed'),
-		field: 'downloadSpeed',
-		type: QTreeTableColumnType.FileSpeed,
-		align: 'right',
-		width: 120,
-	},
-	{
-		header: t('components.downloads-table.columns.time-remaining'),
-		field: 'timeRemaining',
-		type: QTreeTableColumnType.Duration,
-		align: 'right',
-		width: 120,
-	},
-	{
-		header: t('components.downloads-table.columns.percentage'),
-		field: 'percentage',
-		type: QTreeTableColumnType.Percentage,
-		align: 'right',
-		width: 120,
-	},
-	{
-		header: t('components.downloads-table.columns.actions'),
-		field: 'actions',
-		type: QTreeTableColumnType.Actions,
-		width: 200,
-		align: 'right',
-		sortable: false,
-	},
-];
+const titleColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.title'),
+	field: 'title',
+};
+
+const statusColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.status'),
+	field: 'status',
+	type: QTreeTableColumnType.Custom,
+	align: 'right',
+	width: 160,
+};
+
+const receivedColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.data-received'),
+	field: 'dataReceived',
+	type: QTreeTableColumnType.FileSize,
+	align: 'right',
+	width: 105,
+};
+
+const totalColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.data-total'),
+	field: 'dataTotal',
+	type: QTreeTableColumnType.FileSize,
+	align: 'right',
+	width: 105,
+};
+
+const speedColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.speed'),
+	field: 'downloadSpeed',
+	type: QTreeTableColumnType.FileSpeed,
+	align: 'right',
+	width: 110,
+};
+
+const remainingColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.time-remaining'),
+	field: 'timeRemaining',
+	type: QTreeTableColumnType.Duration,
+	align: 'right',
+	width: 110,
+};
+
+const percentageColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.percentage'),
+	field: 'percentage',
+	type: QTreeTableColumnType.Percentage,
+	align: 'right',
+	width: 105,
+};
+
+const actionsColumn: QTreeTableColumn = {
+	header: t('components.downloads-table.columns.actions'),
+	field: 'actions',
+	type: QTreeTableColumnType.Actions,
+	width: 160,
+	align: 'right',
+	sortable: false,
+};
+
+const getDownloadTableColumns = computed<QTreeTableColumn[]>(() => {
+	const width = get(tableWidth);
+
+	if (width > 0 && width < 650) {
+		return [titleColumn, { ...statusColumn, width: 125 }, { ...actionsColumn, width: 120 }];
+	}
+
+	if (width > 0 && width < 850) {
+		return [titleColumn, { ...statusColumn, width: 135 }, { ...totalColumn, width: 95 }, { ...actionsColumn, width: 130 }];
+	}
+
+	if (width > 0 && width < 1100) {
+		return [titleColumn, { ...statusColumn, width: 145 }, receivedColumn, totalColumn, percentageColumn, { ...actionsColumn, width: 145 }];
+	}
+
+	return [
+		titleColumn,
+		statusColumn,
+		receivedColumn,
+		totalColumn,
+		speedColumn,
+		remainingColumn,
+		percentageColumn,
+		actionsColumn,
+	];
+});
 
 function onTableAction({ action, data }: { action: DownloadActions; data: IDownloadTableNode }) {
 	const ids: string[] = [data.id];
@@ -348,5 +389,45 @@ function getAllIds(nodes: IDownloadTableNode[]): string[] {
 .inaccessible-item-text {
   text-decoration: line-through;
   opacity: 0.62;
+}
+
+.v8-download-server-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.v8-download-server-title .title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v8-download-table-host,
+.v8-download-tree-table {
+  width: 100%;
+  min-width: 0;
+}
+
+.v8-download-table-host {
+  overflow: hidden;
+}
+
+.v8-download-tree-table .p-treetable-table-container {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.v8-download-title-text,
+.v8-download-status-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -81,7 +81,7 @@
 		</template>
 
 		<!-- Download confirmation dialog	-->
-		<DownloadConfirmation @download="downloadStore.downloadMedia($event)" />
+		<DownloadConfirmation @download="submitDownloadRequest" />
 
 		<QLoadingOverlay :loading="loading" />
 	</QPage>
@@ -146,6 +146,25 @@ const mediaCountFormatted = computed(() => {
 const libraryId = computed(() => +(route.params.libraryId as string));
 const mediaId = computed(() => +(route.params.tvShowId as string));
 
+function setTvShowDownloadContext(): void {
+	const item = get(mediaItemDetail);
+	if (!item) {
+		return;
+	}
+
+	downloadStore.setDiscoverTvShowRequestContext(
+		item.plexServerId,
+		get(mediaId),
+	);
+}
+
+function submitDownloadRequest(
+	request: Parameters<typeof downloadStore.downloadMedia>[0],
+): void {
+	setTvShowDownloadContext();
+	downloadStore.downloadMedia(request);
+}
+
 function onAction(event: IMediaOverviewBarActions) {
 	if (event === 'back') {
 		router.go(-1);
@@ -161,6 +180,7 @@ listenMediaOverviewDownloadCommand((command) => {
 	if (settingsStore.isConfirmationEnabled(type)) {
 		dialogStore.openMediaConfirmationDownloadDialog(command);
 	} else {
+		setTvShowDownloadContext();
 		downloadStore.downloadMedia({
 			downloadMedias: command,
 			customDestinationFolderPath: '',

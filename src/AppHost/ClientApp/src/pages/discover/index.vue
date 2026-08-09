@@ -295,9 +295,9 @@
 						<div class="discover-card-v5__badges">
 							<span
 								class="discover-reason-badge"
-								:class="reasonClass(item.comparisonState)">
-								<q-icon :name="reasonIcon(item.comparisonState)" />
-								{{ reasonLabel(item.comparisonState, item.media.type) }}
+								:class="isItemQueued(item) ? 'discover-reason-badge--queued' : reasonClass(item.comparisonState)">
+								<q-icon :name="isItemQueued(item) ? 'mdi-progress-clock' : reasonIcon(item.comparisonState)" />
+								{{ isItemQueued(item) ? 'In queue' : reasonLabel(item.comparisonState, item.media.type) }}
 							</span>
 
 							<span
@@ -403,7 +403,7 @@
 		</template>
 
 		<MediaComparisonDetailsDialog />
-		<DownloadConfirmation @download="downloadStore.downloadMedia($event)" />
+		<DownloadConfirmation @download="handleConfirmedDownload" />
 	</q-page>
 </template>
 
@@ -441,6 +441,8 @@ const reasonFilter = ref<'all' | 'missing' | 'upgrades'>('all');
 const wantedOnly = useLocalStorage('reaparr-discover-wanted-only', true);
 const pageSize = useLocalStorage<number>('reaparr-discover-page-size', 100);
 const page = ref(1);
+const submittingItemKeys = ref<Record<string, number>>({});
+const pendingConfirmationItemKey = ref<string | null>(null);
 
 const pageSizeOptions = [
 	{ label: '25', value: 25 },
@@ -642,6 +644,46 @@ function loadMore() {
 	useSubscription(discoverStore.loadMore(get(pageSize)).subscribe());
 }
 
+function isItemQueued(item: IDiscoverItem): boolean {
+	if (submittingItemKeys.value[item.key]) {
+		return true;
+	}
+
+	return item.sources.some((source) =>
+		downloadStore.isMediaRecentlyRequested(
+			source.media.plexServerId,
+			source.media.id,
+		),
+	);
+}
+
+function markItemSubmitting(itemKey: string): void {
+	submittingItemKeys.value = {
+		...submittingItemKeys.value,
+		[itemKey]: Date.now(),
+	};
+
+	window.setTimeout(() => {
+		submittingItemKeys.value = Object.fromEntries(
+			Object.entries(submittingItemKeys.value).filter(
+				([key]) => key !== itemKey,
+			),
+		);
+	}, 10000);
+}
+
+function handleConfirmedDownload(
+	request: Parameters<typeof downloadStore.downloadMedia>[0],
+): void {
+	const itemKey = pendingConfirmationItemKey.value;
+	if (itemKey) {
+		markItemSubmitting(itemKey);
+	}
+
+	pendingConfirmationItemKey.value = null;
+	downloadStore.downloadMedia(request);
+}
+
 function reasonLabel(state: PlexMediaComparisonState, mediaType: PlexMediaType): string {
 	if (mediaType === PlexMediaType.TvShow) {
 		switch (state) {
@@ -729,6 +771,14 @@ function qualityLabel(media: PlexMediaSlimDTO): string {
 }
 
 function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
+	if (isItemQueued(item)) {
+		$q.notify({
+			type: 'info',
+			message: 'This item has already been added to the Reaparr queue.',
+		});
+		return;
+	}
+
 	if (item.media.type === PlexMediaType.TvShow) {
 		openTvSeriesDetails(item);
 		return;
@@ -764,10 +814,12 @@ function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 
 	const mediaType = smartCommand[0]?.type ?? PlexMediaType.Unknown;
 	if (settingsStore.isConfirmationEnabled(mediaType)) {
+		pendingConfirmationItemKey.value = item.key;
 		dialogStore.openMediaConfirmationDownloadDialog(smartCommand);
 		return;
 	}
 
+	markItemSubmitting(item.key);
 	downloadStore.downloadMedia({
 		customDestinationFolderPath: '',
 		destinationFolderPathId: null,
@@ -1203,15 +1255,14 @@ onMounted(() => {
 }
 
 .discover-card-v5__badges {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
+  position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   gap: 7px;
+  padding: 10px 10px 0;
   pointer-events: none;
 }
 
@@ -1236,6 +1287,10 @@ onMounted(() => {
 
 .discover-reason-badge--upgrade {
   background: rgba(35, 166, 105, 0.84);
+}
+
+.discover-reason-badge--queued {
+  background: rgba(67, 112, 238, 0.92);
 }
 
 .discover-source-count {
