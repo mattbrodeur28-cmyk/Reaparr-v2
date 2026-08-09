@@ -490,29 +490,54 @@ const filteredItems = computed(() => {
 	const typeFilter = get(mediaTypeFilter);
 	const reason = get(reasonFilter);
 
-	return discoverStore.items.filter((item) => {
-		if (get(applyWantedOnly) && !upgradeStates.includes(item.comparisonState) && !item.wantedByArr) {
-			return false;
+	return discoverStore.items.flatMap((item) => {
+		const onlineSources = item.sources.filter((source) =>
+			discoverStore.isSourceOnline(source.media.plexServerId),
+		);
+
+		if (onlineSources.length === 0) {
+			return [];
 		}
 
-		if (query && !item.media.title.toLocaleLowerCase().includes(query)) {
-			return false;
+		const bestSource = discoverStore.selectBestSource(
+			{ ...item, sources: onlineSources },
+			[],
+			true,
+		);
+
+		if (!bestSource) {
+			return [];
 		}
 
-		if (typeFilter === 'movies' && item.media.type !== PlexMediaType.Movie) {
-			return false;
-		}
-		if (typeFilter === 'tv' && item.media.type !== PlexMediaType.TvShow) {
-			return false;
-		}
-		if (reason === 'missing' && !missingStates.includes(item.comparisonState)) {
-			return false;
-		}
-		if (reason === 'upgrades' && !upgradeStates.includes(item.comparisonState)) {
-			return false;
+		const liveItem: IDiscoverItem = {
+			...item,
+			media: bestSource.media,
+			sources: onlineSources,
+			comparisonState: discoverStore.getAggregateState(onlineSources),
+		};
+
+		if (get(applyWantedOnly) && !upgradeStates.includes(liveItem.comparisonState) && !liveItem.wantedByArr) {
+			return [];
 		}
 
-		return true;
+		if (query && !liveItem.media.title.toLocaleLowerCase().includes(query)) {
+			return [];
+		}
+
+		if (typeFilter === 'movies' && liveItem.media.type !== PlexMediaType.Movie) {
+			return [];
+		}
+		if (typeFilter === 'tv' && liveItem.media.type !== PlexMediaType.TvShow) {
+			return [];
+		}
+		if (reason === 'missing' && !missingStates.includes(liveItem.comparisonState)) {
+			return [];
+		}
+		if (reason === 'upgrades' && !upgradeStates.includes(liveItem.comparisonState)) {
+			return [];
+		}
+
+		return [liveItem];
 	});
 });
 
@@ -795,14 +820,6 @@ onMounted(() => {
 </script>
 
 <style lang="scss">
-body.body--dark {
-  --v75-discover-sticky-bg: rgba(9, 12, 20, 0.975);
-}
-
-body.body--light {
-  --v75-discover-sticky-bg: rgba(247, 249, 252, 0.985);
-}
-
 .discover-page-v5 {
   position: relative;
   z-index: 1;
@@ -992,9 +1009,8 @@ body.body--light {
 }
 
 .discover-control-panel {
-  position: sticky;
-  top: 88px;
-  z-index: 80;
+  position: relative;
+  z-index: 2;
   isolation: isolate;
   box-sizing: border-box;
   width: 100%;
@@ -1002,10 +1018,8 @@ body.body--light {
   padding: 12px;
   border: 1px solid var(--v5-border);
   border-radius: 22px;
-  background: var(--v75-discover-sticky-bg);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
-  backdrop-filter: blur(18px) saturate(130%);
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  background: var(--v5-surface-strong);
+  box-shadow: var(--v5-shadow-md);
 }
 
 .discover-control-panel__top,
@@ -1367,10 +1381,6 @@ body.body--light {
 }
 
 @media (max-width: 1050px) and (min-width: 761px) {
-  .discover-control-panel {
-    top: 84px;
-  }
-
   .discover-control-panel__top {
     align-items: stretch;
   }
@@ -1420,11 +1430,7 @@ body.body--light {
   }
 
   .discover-control-panel {
-    position: relative;
-    top: auto;
-    z-index: 3;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    z-index: 2;
   }
 
   .discover-control-panel__top,

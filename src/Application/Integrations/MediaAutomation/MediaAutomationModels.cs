@@ -1,8 +1,10 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Reaparr.Domain;
 
 namespace Reaparr.Application;
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MediaAutomationUpgradeMode
 {
     DryRun = 0,
@@ -11,6 +13,7 @@ public enum MediaAutomationUpgradeMode
     AutomaticReplace = 3,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MediaAutomationEngine
 {
     All = 0,
@@ -18,6 +21,7 @@ public enum MediaAutomationEngine
     Upgrades = 2,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum MediaAutomationStageStatus
 {
     DownloadQueued = 0,
@@ -125,6 +129,8 @@ public sealed record MediaAutomationStatusDTO
     public bool SnapshotAvailable { get; init; }
     public int SnapshotItemLimitPerState { get; init; }
     public bool SnapshotHasMore { get; init; }
+    public bool IsSuccess { get; init; } = true;
+    public string Message { get; init; } = string.Empty;
 }
 
 public sealed record RunMediaAutomationRequest
@@ -132,6 +138,13 @@ public sealed record RunMediaAutomationRequest
     public MediaAutomationEngine Engine { get; init; } = MediaAutomationEngine.All;
     public bool Force { get; init; }
     public bool? DryRun { get; init; }
+
+    /// <summary>
+    /// Optional settings supplied by a manual UI run.
+    /// When provided, these settings are saved immediately before the run so
+    /// the command always uses what the user currently sees on screen.
+    /// </summary>
+    public MediaAutomationSettingsDTO? Settings { get; init; }
 }
 
 public sealed record FinalizeMediaAutomationUpgradeRequest

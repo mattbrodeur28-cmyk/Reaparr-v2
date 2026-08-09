@@ -118,6 +118,8 @@ public sealed class SaveMediaAutomationEndpoint
                     _pathProvider,
                     ct
                 ),
+                IsSuccess = true,
+                Message = "Media Automation settings saved.",
                 SnapshotAvailable = File.Exists(
                     DiscoverPerformanceCachePaths.GetSnapshotPath(_pathProvider)
                 ),
@@ -152,6 +154,15 @@ public sealed class RunMediaAutomationEndpoint
         CancellationToken ct
     )
     {
+        if (req.Settings is not null)
+        {
+            await MediaAutomationStorage.SaveSettingsAsync(
+                _pathProvider,
+                req.Settings,
+                ct
+            );
+        }
+
         var result = await _commandExecutor.Send(
             new RunMediaAutomationCommand(
                 req.Engine,
@@ -179,6 +190,9 @@ public sealed class RunMediaAutomationEndpoint
                             _pathProvider
                         )
                     ),
+                    IsSuccess = false,
+                    Message = result.Errors.FirstOrDefault()?.Message
+                        ?? "Media Automation could not run.",
                 },
                 ct
             );
@@ -193,6 +207,10 @@ public sealed class RunMediaAutomationEndpoint
                     ct
                 ),
                 State = result.Value,
+                IsSuccess = true,
+                Message = req.DryRun == true
+                    ? $"{req.Engine} Dry Run completed."
+                    : $"{req.Engine} automation run completed.",
                 SnapshotAvailable = File.Exists(
                     DiscoverPerformanceCachePaths.GetSnapshotPath(_pathProvider)
                 ),

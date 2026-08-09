@@ -269,10 +269,12 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 					state.serverHasMore = snapshot.hasMore;
 					state.serverItemLimit = snapshot.itemLimitPerState || state.serverItemLimit;
 
-					const plexItems: IDiscoverSource[] = snapshot.sources.map((source) => ({
-						media: source.media,
-						comparisonState: source.comparisonState,
-					}));
+					const plexItems: IDiscoverSource[] = snapshot.sources
+						.filter((source) => isServerOnline(source.media.plexServerId))
+						.map((source) => ({
+							media: source.media,
+							comparisonState: source.comparisonState,
+						}));
 
 					return loadIdentities(plexItems).pipe(
 						map((identity) => ({ plexItems, wanted, identity, snapshot })),
@@ -350,6 +352,9 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 		},
 		getBestQuality(media: PlexMediaSlimDTO): VideoQuality {
 			return getBestQuality(media);
+		},
+		getAggregateState(sources: IDiscoverSource[]): PlexMediaComparisonState {
+			return getAggregateComparisonState(sources);
 		},
 		getMatchingQualities(media: PlexMediaSlimDTO, requestedQualities: VideoQuality[]): PlexMediaQualityDTO[] {
 			if (requestedQualities.length === 0) {
@@ -774,13 +779,26 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 	}
 
 	function hydrateCachedItems(items: IDiscoverItem[]): IDiscoverItem[] {
-		return items.map((item) => {
-			const best = selectBestSource(item.sources, [], false) ?? item.sources[0];
-			return {
+		return items.flatMap((item) => {
+			const onlineSources = item.sources.filter((source) =>
+				isServerOnline(source.media.plexServerId),
+			);
+
+			if (onlineSources.length === 0) {
+				return [];
+			}
+
+			const best = selectBestSource(onlineSources, [], true) ?? onlineSources[0];
+			if (!best) {
+				return [];
+			}
+
+			return [{
 				...item,
-				media: best?.media ?? item.media,
-				comparisonState: getAggregateComparisonState(item.sources),
-			};
+				sources: onlineSources,
+				media: best.media,
+				comparisonState: getAggregateComparisonState(onlineSources),
+			}];
 		});
 	}
 
@@ -831,8 +849,7 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 	}
 
 	function isServerOnline(plexServerId: number): boolean {
-		const server = serverStore.getServer(plexServerId);
-		return serverStore.getServerStatus(plexServerId) || Boolean(server?.presence);
+		return serverStore.getServerStatus(plexServerId);
 	}
 
 	function getQualityScore(media: PlexMediaSlimDTO): number {
@@ -897,7 +914,8 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 					&& library.syncedAt
 					&& server
 					&& server.isEnabled
-					&& !server.owned,
+					&& !server.owned
+					&& isServerOnline(library.plexServerId),
 				);
 			});
 		},

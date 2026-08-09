@@ -34,6 +34,12 @@
 			items per comparison stream. It will not silently query the entire remote catalog.
 		</q-banner>
 
+		<QAlert
+			v-if="message"
+			:type="messageSuccess ? 'success' : 'error'">
+			{{ message }}
+		</QAlert>
+
 		<div class="v7-automation-grid">
 			<article class="v7-automation-card">
 				<div class="v7-automation-card__header">
@@ -401,12 +407,6 @@
 				Run either engine in Dry Run mode to preview what Reaparr would do.
 			</div>
 		</section>
-
-		<QAlert
-			v-if="message"
-			:type="messageSuccess ? 'success' : 'error'">
-			{{ message }}
-		</QAlert>
 	</QSection>
 </template>
 
@@ -496,6 +496,8 @@ interface IStatus {
 	snapshotAvailable: boolean;
 	snapshotItemLimitPerState: number;
 	snapshotHasMore: boolean;
+	isSuccess?: boolean;
+	message?: string;
 }
 
 const settings = reactive<IAutomationSettings>({
@@ -668,8 +670,8 @@ async function save() {
 		);
 		applyStatus(response.data);
 		await loadStatus();
-		messageSuccess.value = true;
-		message.value = 'Media Automation settings saved.';
+		messageSuccess.value = response.data.isSuccess !== false;
+		message.value = response.data.message || 'Media Automation settings saved.';
 	} catch {
 		messageSuccess.value = false;
 		message.value = 'Media Automation settings could not be saved.';
@@ -694,17 +696,26 @@ async function runNow(engine: 'Missing' | 'Upgrades', dryRun: boolean) {
 				engine,
 				force: true,
 				dryRun,
+				settings: {
+					missing: { ...settings.missing },
+					upgrades: { ...settings.upgrades },
+				},
 			},
 		);
+
 		applyStatus(response.data);
-		await loadStatus();
-		messageSuccess.value = true;
-		message.value = dryRun
-			? `${engine} Dry Run completed. Review the plan below.`
-			: `${engine} automation run completed.`;
-	} catch {
+		messageSuccess.value = response.data.isSuccess !== false;
+		message.value = response.data.message
+			|| (
+				dryRun
+					? `${engine} Dry Run completed. Review the plan below.`
+					: `${engine} automation run completed.`
+			);
+	} catch (error) {
 		messageSuccess.value = false;
-		message.value = `${engine} automation could not run.`;
+		message.value = Axios.isAxiosError(error)
+			? error.response?.data?.message || `${engine} automation request failed.`
+			: `${engine} automation could not run.`;
 	} finally {
 		runningMissing.value = false;
 		runningUpgrades.value = false;

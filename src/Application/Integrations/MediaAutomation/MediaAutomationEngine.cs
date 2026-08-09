@@ -242,7 +242,40 @@ public sealed class RunMediaAutomationCommandHandler
             if (cache is not { SchemaVersion: 5 })
                 return null;
 
-            return new AutomationSnapshot(cache, cache.Sources);
+            var sourceServerIds = cache.Sources
+                .Select(x => x.Media.PlexServerId)
+                .Distinct()
+                .ToArray();
+
+            if (sourceServerIds.Length == 0)
+                return new AutomationSnapshot(cache, []);
+
+            var connections = await _dbContext
+                .PlexServerConnections.AsNoTracking()
+                .Include(x => x.LatestConnectionStatus)
+                .Where(x => sourceServerIds.Contains(x.PlexServerId))
+                .ToListAsync(ct);
+
+            var onlineServerIds = connections
+                .Where(x => x.LatestConnectionStatus?.IsSuccessful == true)
+                .Select(x => x.PlexServerId)
+                .ToHashSet();
+
+            var onlineSources = cache.Sources
+                .Where(x => onlineServerIds.Contains(x.Media.PlexServerId))
+                .ToList();
+
+            var removedCount = cache.Sources.Count - onlineSources.Count;
+            if (removedCount > 0)
+            {
+                _log.Here()
+                    .Information(
+                        "Media Automation ignored {OfflineSourceCount} Discover source(s) from currently offline Plex servers",
+                        removedCount
+                    );
+            }
+
+            return new AutomationSnapshot(cache, onlineSources);
         }
         catch (Exception ex)
         {
@@ -311,6 +344,20 @@ public sealed class RunMediaAutomationCommandHandler
         else if (settings.Missing.TvEpisodes && !_sonarrSettings.IsConfigured)
         {
             warnings.Add("Sonarr is not configured, so missing TV episodes were skipped.");
+        }
+
+        if (snapshot.Sources.Count == 0)
+        {
+            warnings.Add(
+                "The current Discover snapshot has no online remote Plex sources. "
+                + "Automation will not queue media from an offline server."
+            );
+        }
+        else if (candidates.Count == 0)
+        {
+            warnings.Add(
+                "No eligible missing-media candidates matched the current Discover window and exact Radarr/Sonarr IDs."
+            );
         }
 
         var queued = 0;
@@ -402,6 +449,20 @@ public sealed class RunMediaAutomationCommandHandler
                     Math.Max(0, limit - candidates.Count),
                     ct
                 )
+            );
+        }
+
+        if (snapshot.Sources.Count == 0)
+        {
+            warnings.Add(
+                "The current Discover snapshot has no online remote Plex sources. "
+                + "Upgrade automation will not queue media from an offline server."
+            );
+        }
+        else if (candidates.Count == 0)
+        {
+            warnings.Add(
+                "No eligible quality-upgrade candidates were found in the current online Discover window."
             );
         }
 
