@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -479,6 +480,254 @@ public sealed class RefreshPlexLibraryNowEndpoint
     }
 }
 
+internal static class LibraryReconciliationBatchCoordinator
+{
+    private const int QuietPeriodSeconds = 120;
+    private const int MaximumBatchWaitSeconds = 900;
+    private const int PlexSettleSeconds = 30;
+
+    private sealed class BatchState
+    {
+        public object Gate { get; } = new();
+        public DateTime FirstQueuedUtc { get; set; }
+        public DateTime LastQueuedUtc { get; set; }
+        public int Version { get; set; }
+        public bool WorkerRunning { get; set; }
+    }
+
+    private static readonly ConcurrentDictionary<int, BatchState> _states = new();
+
+    public static void Queue(
+        int plexLibraryId,
+        ILogger log,
+        IReaparrDbContextFactory dbContextFactory,
+        IHttpClientFactory httpClientFactory,
+        ICommandExecutor commandExecutor,
+        IPathProvider pathProvider
+    )
+    {
+        var state = _states.GetOrAdd(plexLibraryId, _ => new BatchState());
+        var startWorker = false;
+        var now = DateTime.UtcNow;
+
+        lock (state.Gate)
+        {
+            if (!state.WorkerRunning)
+            {
+                state.FirstQueuedUtc = now;
+                state.WorkerRunning = true;
+                startWorker = true;
+            }
+
+            state.LastQueuedUtc = now;
+            state.Version++;
+        }
+
+        log.Here()
+            .Debug(
+                "Queued automatic reconciliation for Plex library {PlexLibraryId}. "
+                    + "Heavy library work will run after {QuietSeconds}s of quiet time "
+                    + "or at the {MaxWaitSeconds}s maximum batch age.",
+                plexLibraryId,
+                QuietPeriodSeconds,
+                MaximumBatchWaitSeconds
+            );
+
+        if (startWorker)
+        {
+            _ = RunWorkerAsync(
+                plexLibraryId,
+                state,
+                log,
+                dbContextFactory,
+                httpClientFactory,
+                commandExecutor,
+                pathProvider
+            );
+        }
+    }
+
+    private static async Task RunWorkerAsync(
+        int plexLibraryId,
+        BatchState state,
+        ILogger log,
+        IReaparrDbContextFactory dbContextFactory,
+        IHttpClientFactory httpClientFactory,
+        ICommandExecutor commandExecutor,
+        IPathProvider pathProvider
+    )
+    {
+        try
+        {
+            while (true)
+            {
+                DateTime firstQueuedUtc;
+                DateTime lastQueuedUtc;
+
+                lock (state.Gate)
+                {
+                    firstQueuedUtc = state.FirstQueuedUtc;
+                    lastQueuedUtc = state.LastQueuedUtc;
+                }
+
+                var now = DateTime.UtcNow;
+                var quietRemaining =
+                    TimeSpan.FromSeconds(QuietPeriodSeconds) - (now - lastQueuedUtc);
+                var maxWaitRemaining =
+                    TimeSpan.FromSeconds(MaximumBatchWaitSeconds) - (now - firstQueuedUtc);
+
+                var delay = quietRemaining < maxWaitRemaining
+                    ? quietRemaining
+                    : maxWaitRemaining;
+
+                if (delay > TimeSpan.Zero)
+                    await Task.Delay(delay);
+
+                int batchVersion;
+                lock (state.Gate)
+                {
+                    now = DateTime.UtcNow;
+
+                    var quietReached =
+                        now - state.LastQueuedUtc >= TimeSpan.FromSeconds(QuietPeriodSeconds);
+                    var maxWaitReached =
+                        now - state.FirstQueuedUtc
+                        >= TimeSpan.FromSeconds(MaximumBatchWaitSeconds);
+
+                    if (!quietReached && !maxWaitReached)
+                        continue;
+
+                    batchVersion = state.Version;
+                }
+
+                await RunBatchAsync(
+                    plexLibraryId,
+                    log,
+                    dbContextFactory,
+                    httpClientFactory,
+                    commandExecutor,
+                    pathProvider
+                );
+
+                lock (state.Gate)
+                {
+                    if (state.Version == batchVersion)
+                    {
+                        state.WorkerRunning = false;
+                        return;
+                    }
+
+                    state.FirstQueuedUtc = DateTime.UtcNow;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Here()
+                .Warning(
+                    ex,
+                    "Batched reconciliation worker failed for Plex library {PlexLibraryId}",
+                    plexLibraryId
+                );
+
+            lock (state.Gate)
+                state.WorkerRunning = false;
+        }
+    }
+
+    private static async Task RunBatchAsync(
+        int plexLibraryId,
+        ILogger log,
+        IReaparrDbContextFactory dbContextFactory,
+        IHttpClientFactory httpClientFactory,
+        ICommandExecutor commandExecutor,
+        IPathProvider pathProvider
+    )
+    {
+        var ct = CancellationToken.None;
+        var settings = await LibraryReconciliationStorage.LoadAsync(pathProvider, ct);
+
+        if (!settings.Enabled || !settings.RefreshPlex)
+            return;
+
+        using var dbContext = await dbContextFactory.CreateAsync();
+
+        var libraryResult = await LibraryReconciliationActions.GetOwnedLibraryAsync(
+            dbContext,
+            plexLibraryId,
+            ct
+        );
+
+        if (libraryResult.IsFailed)
+        {
+            log.Here()
+                .Warning(
+                    "Batched reconciliation could not resolve Plex library {PlexLibraryId}: {Error}",
+                    plexLibraryId,
+                    libraryResult.Errors.FirstOrDefault()?.Message
+                );
+            return;
+        }
+
+        log.Here()
+            .Information(
+                "Starting one batched Plex scan for owned library {PlexLibraryTitle} "
+                    + "({PlexLibraryId}) after completed-download burst",
+                libraryResult.Value.Title,
+                libraryResult.Value.Id
+            );
+
+        var refreshResult = await LibraryReconciliationActions.RefreshPlexLibraryAsync(
+            log,
+            dbContext,
+            httpClientFactory,
+            libraryResult.Value,
+            ct
+        );
+
+        if (refreshResult.IsFailed)
+        {
+            log.Here()
+                .Warning(
+                    "Batched Plex scan failed for library {PlexLibraryId}: {Error}",
+                    plexLibraryId,
+                    refreshResult.Errors.FirstOrDefault()?.Message
+                );
+            return;
+        }
+
+        if (settings.SyncReaparrLibrary)
+        {
+            // Plex queues its filesystem scan asynchronously. Give it a small
+            // head start before Reaparr performs its own forced library sync.
+            await Task.Delay(TimeSpan.FromSeconds(PlexSettleSeconds));
+
+            var syncResult = await commandExecutor.Send(
+                new QueueLibrarySyncJobCommand([plexLibraryId], Force: true),
+                ct
+            );
+
+            if (syncResult.IsFailed)
+            {
+                log.Here()
+                    .Warning(
+                        "Batched Reaparr library sync failed for library {PlexLibraryId}: {Error}",
+                        plexLibraryId,
+                        syncResult.Errors.FirstOrDefault()?.Message
+                    );
+            }
+        }
+
+        LibraryReconciliationActions.ClearDiscoverSnapshot(pathProvider);
+
+        log.Here()
+            .Information(
+                "Completed batched library reconciliation for Plex library {PlexLibraryId}",
+                plexLibraryId
+            );
+    }
+}
+
 public sealed record ReconcileCompletedDownloadCommand(DownloadTaskKey Key) : ICommand<Result>;
 
 public sealed class ReconcileCompletedDownloadCommandHandler
@@ -486,6 +735,7 @@ public sealed class ReconcileCompletedDownloadCommandHandler
 {
     private readonly ILogger _log;
     private readonly IReaparrDbContext _dbContext;
+    private readonly IReaparrDbContextFactory _dbContextFactory;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ICommandExecutor _commandExecutor;
     private readonly IRadarrSettings _radarrSettings;
@@ -495,6 +745,7 @@ public sealed class ReconcileCompletedDownloadCommandHandler
     public ReconcileCompletedDownloadCommandHandler(
         ILogger log,
         IReaparrDbContext dbContext,
+        IReaparrDbContextFactory dbContextFactory,
         IHttpClientFactory httpClientFactory,
         ICommandExecutor commandExecutor,
         IRadarrSettings radarrSettings,
@@ -504,6 +755,7 @@ public sealed class ReconcileCompletedDownloadCommandHandler
     {
         _log = log.ForContext<ReconcileCompletedDownloadCommandHandler>();
         _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
         _httpClientFactory = httpClientFactory;
         _commandExecutor = commandExecutor;
         _radarrSettings = radarrSettings;
@@ -544,43 +796,17 @@ public sealed class ReconcileCompletedDownloadCommandHandler
 
         if (settings.RefreshPlex && destinationLibraryId.HasValue)
         {
-            await RunBestEffortAsync(
-                "Plex destination library scan",
-                async () =>
-                {
-                    var libraryResult = await LibraryReconciliationActions.GetOwnedLibraryAsync(
-                        _dbContext,
-                        destinationLibraryId.Value,
-                        cancellationToken
-                    );
-
-                    if (libraryResult.IsFailed)
-                        return libraryResult.ToResult();
-
-                    return await LibraryReconciliationActions.RefreshPlexLibraryAsync(
-                        _log,
-                        _dbContext,
-                        _httpClientFactory,
-                        libraryResult.Value,
-                        cancellationToken
-                    );
-                }
+            // V8.3.2: a completed file only marks its destination library dirty.
+            // Plex filesystem scanning and Reaparr's forced library sync happen
+            // once after the download burst settles instead of once per file.
+            LibraryReconciliationBatchCoordinator.Queue(
+                destinationLibraryId.Value,
+                _log,
+                _dbContextFactory,
+                _httpClientFactory,
+                _commandExecutor,
+                _pathProvider
             );
-
-            if (settings.SyncReaparrLibrary)
-            {
-                await RunBestEffortAsync(
-                    "Reaparr owned library sync",
-                    () =>
-                        _commandExecutor.Send(
-                            new QueueLibrarySyncJobCommand(
-                                [destinationLibraryId.Value],
-                                Force: true
-                            ),
-                            cancellationToken
-                        )
-                );
-            }
         }
 
         var identity = await ResolveIdentityAsync(downloadTask, cancellationToken);
