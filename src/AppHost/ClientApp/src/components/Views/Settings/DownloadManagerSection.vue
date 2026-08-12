@@ -45,7 +45,7 @@
 			<HelpRow
 				label="Mover runtime"
 				title="Mover memory diagnostics"
-				text="Shows the current mover count and memory measurements. Container file cache can become large during several simultaneous file copies even when the managed .NET heap is small.">
+				text="Shows mover activity plus process, GC and container memory. V8.3.3 separates live managed data from GC heap capacity and filesystem cache so import-related memory pressure is easier to identify.">
 				<div class="column q-gutter-sm">
 					<div class="row q-gutter-sm items-center">
 						<q-chip
@@ -66,7 +66,21 @@
 					<div class="text-caption text-grey-6">
 						Process working set: {{ formatBytes(moveStatus.processWorkingSetBytes) }}
 						•
-						Managed heap: {{ formatBytes(moveStatus.managedHeapBytes) }}
+						Private memory: {{ formatBytes(moveStatus.processPrivateMemoryBytes) }}
+					</div>
+					<div class="text-caption text-grey-6">
+						Live managed: {{ formatBytes(moveStatus.liveManagedBytes) }}
+						•
+						GC heap: {{ formatBytes(moveStatus.gcHeapSizeBytes) }}
+						•
+						Fragmented: {{ formatBytes(moveStatus.gcFragmentedBytes) }}
+					</div>
+					<div class="text-caption text-grey-6">
+						GC committed: {{ formatBytes(moveStatus.gcCommittedBytes) }}
+						•
+						Allocated since start: {{ formatBytes(moveStatus.totalAllocatedBytes) }}
+						•
+						GCs: {{ moveStatus.gen0Collections }}/{{ moveStatus.gen1Collections }}/{{ moveStatus.gen2Collections }}
 					</div>
 					<div
 						v-if="moveStatus.containerMemoryBytes > 0"
@@ -74,6 +88,12 @@
 						Container memory: {{ formatBytes(moveStatus.containerMemoryBytes) }}
 						•
 						File cache: {{ formatBytes(moveStatus.containerFileCacheBytes) }}
+						•
+						Anonymous: {{ formatBytes(moveStatus.containerAnonymousBytes) }}
+					</div>
+					<div class="text-caption text-grey-6">
+						Live managed is approximate current managed data. GC heap is the heap size
+						reported at the last collection and can remain larger after a heavy import.
 					</div>
 
 					<BaseButton
@@ -113,9 +133,19 @@ interface IMoveConcurrencyStatus {
 	fairAcrossServers: boolean;
 	activeMovers: number;
 	processWorkingSetBytes: number;
+	processPrivateMemoryBytes: number;
 	managedHeapBytes: number;
+	liveManagedBytes: number;
+	gcHeapSizeBytes: number;
+	gcCommittedBytes: number;
+	gcFragmentedBytes: number;
+	totalAllocatedBytes: number;
+	gen0Collections: number;
+	gen1Collections: number;
+	gen2Collections: number;
 	containerMemoryBytes: number;
 	containerFileCacheBytes: number;
+	containerAnonymousBytes: number;
 }
 
 const settingsStore = useSettingsStore();
@@ -125,9 +155,19 @@ const moveStatus = reactive<IMoveConcurrencyStatus>({
 	fairAcrossServers: true,
 	activeMovers: 0,
 	processWorkingSetBytes: 0,
+	processPrivateMemoryBytes: 0,
 	managedHeapBytes: 0,
+	liveManagedBytes: 0,
+	gcHeapSizeBytes: 0,
+	gcCommittedBytes: 0,
+	gcFragmentedBytes: 0,
+	totalAllocatedBytes: 0,
+	gen0Collections: 0,
+	gen1Collections: 0,
+	gen2Collections: 0,
 	containerMemoryBytes: 0,
 	containerFileCacheBytes: 0,
+	containerAnonymousBytes: 0,
 });
 
 const moveStatusLoading = ref(false);

@@ -81,6 +81,7 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
                     deletedIds: [key.Id],
                     cancellationToken
                 );
+                ClearTerminalNodeTracking(key.Id);
                 return;
             }
 
@@ -113,7 +114,11 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
             var changedParentKeys = await DetermineDownloadStatusAsync(dbContext, key, cancellationToken);
             var rootKey = await dbContext.GetRootDownloadTaskKeyAsync(key, cancellationToken);
             if (rootKey is null)
+            {
+                if (newStatus is DownloadStatus.Completed)
+                    ClearTerminalNodeTracking(key.Id);
                 return;
+            }
 
             var changedNodeIds = changedParentKeys.Select(x => x.Id).Append(key.Id).Distinct().ToList();
             if (hasStatusChanged || changedParentKeys.Count > 0)
@@ -141,6 +146,9 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
                     errorResult.ToString()
                 );
             }
+
+            if (newStatus is DownloadStatus.Completed)
+                ClearTerminalNodeTracking(key.Id);
         });
 
         if (result.IsFailed)
@@ -154,7 +162,13 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
         DirectDownloadSnapshot? snapshot = null
     )
     {
-        if (_statusByNodeId.GetValueOrDefault(key.Id) is DownloadStatus.Paused or DownloadStatus.AutoPaused or DownloadStatus.Deleted)
+        if (
+            _statusByNodeId.GetValueOrDefault(key.Id)
+            is DownloadStatus.Paused
+                or DownloadStatus.AutoPaused
+                or DownloadStatus.Deleted
+                or DownloadStatus.Completed
+        )
             return;
 
         var update = new BufferedProgressUpdate
@@ -165,7 +179,16 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
             Snapshot = snapshot,
         };
 
-        _progressByNodeId.AddOrUpdate(key.Id, _ => update, (_, _) => update);
+        _progressByNodeId.AddOrUpdate(
+            key.Id,
+            _ => update,
+            (_, current) =>
+                update with
+                {
+                    // Null means this is a lightweight progress-only update.
+                    Snapshot = snapshot ?? current.Snapshot,
+                }
+        );
 
         // On the first progress event for this node, bypass the periodic flush so the
         // front-end receives data immediately instead of waiting up to 1 second.
@@ -696,6 +719,17 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
             _ => BufferedProgressUpdate.FromStatus(key),
             (_, _) => BufferedProgressUpdate.FromStatus(key)
         );
+    }
+
+    private void ClearTerminalNodeTracking(Guid nodeId)
+    {
+        _progressByNodeId.TryRemove(nodeId, out _);
+        _scopeByNodeId.TryRemove(nodeId, out _);
+        // Keep the tiny terminal status tombstone so a late progress event cannot
+        // resurrect a Completed/Deleted task. It will be overwritten if the task
+        // is explicitly restarted.
+        _lastProgressLogByNodeId.TryRemove(nodeId, out _);
+        _seenProgressNodes.TryRemove(nodeId, out _);
     }
 
     private void ResetProgressJourneyTrackingIfNeeded(Guid nodeId, DownloadStatus newStatus)

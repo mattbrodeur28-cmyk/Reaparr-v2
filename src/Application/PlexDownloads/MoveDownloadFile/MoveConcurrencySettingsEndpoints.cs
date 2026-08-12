@@ -19,9 +19,20 @@ public sealed record MoveConcurrencyStatusDTO
     public bool FairAcrossServers { get; init; } = true;
     public int ActiveMovers { get; init; }
     public long ProcessWorkingSetBytes { get; init; }
+    public long ProcessPrivateMemoryBytes { get; init; }
+    // Kept for V8.3 API compatibility; this is GC heap size at the last collection.
     public long ManagedHeapBytes { get; init; }
+    public long LiveManagedBytes { get; init; }
+    public long GcHeapSizeBytes { get; init; }
+    public long GcCommittedBytes { get; init; }
+    public long GcFragmentedBytes { get; init; }
+    public long TotalAllocatedBytes { get; init; }
+    public int Gen0Collections { get; init; }
+    public int Gen1Collections { get; init; }
+    public int Gen2Collections { get; init; }
     public long ContainerMemoryBytes { get; init; }
     public long ContainerFileCacheBytes { get; init; }
+    public long ContainerAnonymousBytes { get; init; }
 }
 
 internal static class MoveConcurrencySettingsFile
@@ -120,9 +131,12 @@ internal static class MoveConcurrencyStatusBuilder
         }
 
         using var process = Process.GetCurrentProcess();
-        var managedHeapBytes = GC.GetGCMemoryInfo().HeapSizeBytes;
+        var gcInfo = GC.GetGCMemoryInfo();
+        var liveManagedBytes = GC.GetTotalMemory(forceFullCollection: false);
+        var totalAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
 
-        var (containerMemoryBytes, containerFileCacheBytes) = ReadCgroupMemory();
+        var (containerMemoryBytes, containerFileCacheBytes, containerAnonymousBytes) =
+            ReadCgroupMemory();
 
         return new MoveConcurrencyStatusDTO
         {
@@ -130,13 +144,23 @@ internal static class MoveConcurrencyStatusBuilder
             FairAcrossServers = true,
             ActiveMovers = activeMovers,
             ProcessWorkingSetBytes = process.WorkingSet64,
-            ManagedHeapBytes = managedHeapBytes,
+            ProcessPrivateMemoryBytes = process.PrivateMemorySize64,
+            ManagedHeapBytes = gcInfo.HeapSizeBytes,
+            LiveManagedBytes = liveManagedBytes,
+            GcHeapSizeBytes = gcInfo.HeapSizeBytes,
+            GcCommittedBytes = gcInfo.TotalCommittedBytes,
+            GcFragmentedBytes = gcInfo.FragmentedBytes,
+            TotalAllocatedBytes = totalAllocatedBytes,
+            Gen0Collections = GC.CollectionCount(0),
+            Gen1Collections = GC.CollectionCount(1),
+            Gen2Collections = GC.CollectionCount(2),
             ContainerMemoryBytes = containerMemoryBytes,
             ContainerFileCacheBytes = containerFileCacheBytes,
+            ContainerAnonymousBytes = containerAnonymousBytes,
         };
     }
 
-    private static (long Total, long FileCache) ReadCgroupMemory()
+    private static (long Total, long FileCache, long Anonymous) ReadCgroupMemory()
     {
         // Docker on modern Unraid normally exposes cgroup v2. A v1 fallback is
         // included so the diagnostics remain useful on older hosts.
@@ -147,7 +171,8 @@ internal static class MoveConcurrencyStatusBuilder
         {
             return (
                 ReadLongFile(v2Current),
-                ReadMemoryStatValue(v2Stat, "file")
+                ReadMemoryStatValue(v2Stat, "file"),
+                ReadMemoryStatValue(v2Stat, "anon")
             );
         }
 
@@ -158,11 +183,12 @@ internal static class MoveConcurrencyStatusBuilder
         {
             return (
                 ReadLongFile(v1Current),
-                ReadMemoryStatValue(v1Stat, "cache")
+                ReadMemoryStatValue(v1Stat, "cache"),
+                ReadMemoryStatValue(v1Stat, "rss")
             );
         }
 
-        return (0, 0);
+        return (0, 0, 0);
     }
 
     private static long ReadLongFile(string path)

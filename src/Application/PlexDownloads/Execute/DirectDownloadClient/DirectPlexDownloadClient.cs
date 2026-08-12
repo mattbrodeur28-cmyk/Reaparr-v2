@@ -29,6 +29,9 @@ public class DirectPlexDownloadClient : IPlexDownloadClient
     private int _isDisposed;
     private int _completionCallbackReceived;
     private int _lastObservedProgressPercentagePercent;
+    private const long ProgressSnapshotIntervalMilliseconds = 5000;
+    private long _lastProgressSnapshotTick;
+    private DirectDownloadSnapshot? _latestProgressSnapshot;
 
     public DirectPlexDownloadClient(
         ILogger log,
@@ -72,6 +75,8 @@ public class DirectPlexDownloadClient : IPlexDownloadClient
     {
         var startupStopwatch = Stopwatch.StartNew();
         _downloadTaskKey = downloadTaskKey;
+        Interlocked.Exchange(ref _lastProgressSnapshotTick, 0);
+        _latestProgressSnapshot = null;
         var downloadTask = await _dbContext.GetDownloadTaskFileAsync(downloadTaskKey, cancellationToken);
         if (downloadTask is null)
         {
@@ -251,7 +256,11 @@ public class DirectPlexDownloadClient : IPlexDownloadClient
 
                     var progressPercentagePercent = Math.Clamp((int)Math.Round(progress.Percentage), 0, 100);
                     Volatile.Write(ref _lastObservedProgressPercentagePercent, progressPercentagePercent);
-                    _downloadTaskUpdateDispatcher.OnProgressUpdated(key, progress, _downloader.Package.ToSnapshot());
+                    _downloadTaskUpdateDispatcher.OnProgressUpdated(
+                        key,
+                        progress,
+                        CreateProgressSnapshotIfDue()
+                    );
                 })
         );
 
@@ -317,6 +326,33 @@ public class DirectPlexDownloadClient : IPlexDownloadClient
                 .Concat()
                 .Subscribe()
         );
+    }
+
+    private DirectDownloadSnapshot? CreateProgressSnapshotIfDue()
+    {
+        var now = System.Environment.TickCount64;
+        var previous = Volatile.Read(ref _lastProgressSnapshotTick);
+
+        if (
+            previous != 0
+            && now - previous < ProgressSnapshotIntervalMilliseconds
+        )
+            return _latestProgressSnapshot;
+
+        if (
+            Interlocked.CompareExchange(
+                ref _lastProgressSnapshotTick,
+                now,
+                previous
+            ) != previous
+        )
+            return _latestProgressSnapshot;
+
+        // Keep one snapshot object alive between refreshes. This avoids allocating
+        // a new package snapshot every 300 ms without sending null between flushes,
+        // so the existing persisted resume state cannot be accidentally cleared.
+        _latestProgressSnapshot = _downloader.Package.ToSnapshot();
+        return _latestProgressSnapshot;
     }
 
     private async Task<Result> ReconcileMissingCompletionCallbackAsync(

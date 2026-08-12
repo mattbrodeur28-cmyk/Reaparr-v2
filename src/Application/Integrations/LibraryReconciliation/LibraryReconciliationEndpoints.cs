@@ -484,7 +484,8 @@ internal static class LibraryReconciliationBatchCoordinator
 {
     private const int QuietPeriodSeconds = 120;
     private const int MaximumBatchWaitSeconds = 900;
-    private const int PlexSettleSeconds = 30;
+    private const int MoverIdleSeconds = 60;
+    private const int MoverPollSeconds = 30;
 
     private sealed class BatchState
     {
@@ -503,7 +504,8 @@ internal static class LibraryReconciliationBatchCoordinator
         IReaparrDbContextFactory dbContextFactory,
         IHttpClientFactory httpClientFactory,
         ICommandExecutor commandExecutor,
-        IPathProvider pathProvider
+        IPathProvider pathProvider,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
     )
     {
         var state = _states.GetOrAdd(plexLibraryId, _ => new BatchState());
@@ -542,7 +544,8 @@ internal static class LibraryReconciliationBatchCoordinator
                 dbContextFactory,
                 httpClientFactory,
                 commandExecutor,
-                pathProvider
+                pathProvider,
+                moveDownloadFileScheduler
             );
         }
     }
@@ -554,7 +557,8 @@ internal static class LibraryReconciliationBatchCoordinator
         IReaparrDbContextFactory dbContextFactory,
         IHttpClientFactory httpClientFactory,
         ICommandExecutor commandExecutor,
-        IPathProvider pathProvider
+        IPathProvider pathProvider,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
     )
     {
         try
@@ -600,13 +604,20 @@ internal static class LibraryReconciliationBatchCoordinator
                     batchVersion = state.Version;
                 }
 
+                await WaitForMoverIdleAsync(
+                    plexLibraryId,
+                    log,
+                    moveDownloadFileScheduler
+                );
+
                 await RunBatchAsync(
                     plexLibraryId,
                     log,
                     dbContextFactory,
                     httpClientFactory,
                     commandExecutor,
-                    pathProvider
+                    pathProvider,
+                    moveDownloadFileScheduler
                 );
 
                 lock (state.Gate)
@@ -635,13 +646,57 @@ internal static class LibraryReconciliationBatchCoordinator
         }
     }
 
+    private static async Task WaitForMoverIdleAsync(
+        int plexLibraryId,
+        ILogger log,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
+    )
+    {
+        DateTime? idleSinceUtc = null;
+        var deferralLogged = false;
+
+        while (true)
+        {
+            var moversActive =
+                await moveDownloadFileScheduler.IsAnyMoveDownloadFileJobRunning();
+
+            if (moversActive)
+            {
+                idleSinceUtc = null;
+
+                if (!deferralLogged)
+                {
+                    log.Here()
+                        .Information(
+                            "Deferring automatic Plex library scan for library "
+                                + "{PlexLibraryId} while file movers are active.",
+                            plexLibraryId
+                        );
+                    deferralLogged = true;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(MoverPollSeconds));
+                continue;
+            }
+
+            idleSinceUtc ??= DateTime.UtcNow;
+            var idleFor = DateTime.UtcNow - idleSinceUtc.Value;
+
+            if (idleFor >= TimeSpan.FromSeconds(MoverIdleSeconds))
+                return;
+
+            await Task.Delay(TimeSpan.FromSeconds(MoverPollSeconds));
+        }
+    }
+
     private static async Task RunBatchAsync(
         int plexLibraryId,
         ILogger log,
         IReaparrDbContextFactory dbContextFactory,
         IHttpClientFactory httpClientFactory,
         ICommandExecutor commandExecutor,
-        IPathProvider pathProvider
+        IPathProvider pathProvider,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
     )
     {
         var ct = CancellationToken.None;
@@ -698,24 +753,15 @@ internal static class LibraryReconciliationBatchCoordinator
 
         if (settings.SyncReaparrLibrary)
         {
-            // Plex queues its filesystem scan asynchronously. Give it a small
-            // head start before Reaparr performs its own forced library sync.
-            await Task.Delay(TimeSpan.FromSeconds(PlexSettleSeconds));
-
-            var syncResult = await commandExecutor.Send(
-                new QueueLibrarySyncJobCommand([plexLibraryId], Force: true),
-                ct
+            // V8.3.3 separates the heavy Reaparr DB import/comparison from the
+            // Plex scan. The DB sync has its own mover-idle + cooldown gate.
+            LibraryReconciliationDbSyncCoordinator.Queue(
+                plexLibraryId,
+                log,
+                commandExecutor,
+                pathProvider,
+                moveDownloadFileScheduler
             );
-
-            if (syncResult.IsFailed)
-            {
-                log.Here()
-                    .Warning(
-                        "Batched Reaparr library sync failed for library {PlexLibraryId}: {Error}",
-                        plexLibraryId,
-                        syncResult.Errors.FirstOrDefault()?.Message
-                    );
-            }
         }
 
         LibraryReconciliationActions.ClearDiscoverSnapshot(pathProvider);
@@ -725,6 +771,229 @@ internal static class LibraryReconciliationBatchCoordinator
                 "Completed batched library reconciliation for Plex library {PlexLibraryId}",
                 plexLibraryId
             );
+    }
+}
+
+internal static class LibraryReconciliationDbSyncCoordinator
+{
+    private const int PlexSettleSeconds = 60;
+    private const int MoverIdleSeconds = 60;
+    private const int MinimumAutomaticSyncIntervalSeconds = 1800;
+    private const int PollSeconds = 30;
+
+    private sealed class DbSyncState
+    {
+        public object Gate { get; } = new();
+        public DateTime LastRequestedUtc { get; set; }
+        public DateTime LastSyncQueuedUtc { get; set; }
+        public int Version { get; set; }
+        public bool WorkerRunning { get; set; }
+    }
+
+    private static readonly ConcurrentDictionary<int, DbSyncState> _states = new();
+
+    public static void Queue(
+        int plexLibraryId,
+        ILogger log,
+        ICommandExecutor commandExecutor,
+        IPathProvider pathProvider,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
+    )
+    {
+        var state = _states.GetOrAdd(plexLibraryId, _ => new DbSyncState());
+        var startWorker = false;
+
+        lock (state.Gate)
+        {
+            state.LastRequestedUtc = DateTime.UtcNow;
+            state.Version++;
+
+            if (!state.WorkerRunning)
+            {
+                state.WorkerRunning = true;
+                startWorker = true;
+            }
+        }
+
+        if (startWorker)
+        {
+            _ = RunWorkerAsync(
+                plexLibraryId,
+                state,
+                log,
+                commandExecutor,
+                pathProvider,
+                moveDownloadFileScheduler
+            );
+        }
+    }
+
+    private static async Task RunWorkerAsync(
+        int plexLibraryId,
+        DbSyncState state,
+        ILogger log,
+        ICommandExecutor commandExecutor,
+        IPathProvider pathProvider,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
+    )
+    {
+        DateTime? idleSinceUtc = null;
+        var moverDeferralLogged = false;
+
+        try
+        {
+            while (true)
+            {
+                DateTime lastRequestedUtc;
+                DateTime lastSyncQueuedUtc;
+
+                lock (state.Gate)
+                {
+                    lastRequestedUtc = state.LastRequestedUtc;
+                    lastSyncQueuedUtc = state.LastSyncQueuedUtc;
+                }
+
+                var now = DateTime.UtcNow;
+
+                // The Plex refresh call is asynchronous. Give Plex a quiet settle
+                // period before considering a full Reaparr DB import/comparison.
+                var settleRemaining =
+                    TimeSpan.FromSeconds(PlexSettleSeconds) - (now - lastRequestedUtc);
+                if (settleRemaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(
+                        settleRemaining < TimeSpan.FromSeconds(PollSeconds)
+                            ? settleRemaining
+                            : TimeSpan.FromSeconds(PollSeconds)
+                    );
+                    continue;
+                }
+
+                var moversActive =
+                    await moveDownloadFileScheduler.IsAnyMoveDownloadFileJobRunning();
+
+                if (moversActive)
+                {
+                    idleSinceUtc = null;
+
+                    if (!moverDeferralLogged)
+                    {
+                        log.Here()
+                            .Information(
+                                "Deferring automatic Reaparr DB sync for Plex library "
+                                    + "{PlexLibraryId} while file movers are active.",
+                                plexLibraryId
+                            );
+                        moverDeferralLogged = true;
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(PollSeconds));
+                    continue;
+                }
+
+                idleSinceUtc ??= now;
+                var idleRemaining =
+                    TimeSpan.FromSeconds(MoverIdleSeconds) - (now - idleSinceUtc.Value);
+
+                if (idleRemaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(
+                        idleRemaining < TimeSpan.FromSeconds(PollSeconds)
+                            ? idleRemaining
+                            : TimeSpan.FromSeconds(PollSeconds)
+                    );
+                    continue;
+                }
+
+                moverDeferralLogged = false;
+
+                if (lastSyncQueuedUtc != default)
+                {
+                    var cooldownRemaining =
+                        TimeSpan.FromSeconds(MinimumAutomaticSyncIntervalSeconds)
+                        - (now - lastSyncQueuedUtc);
+
+                    if (cooldownRemaining > TimeSpan.Zero)
+                    {
+                        await Task.Delay(
+                            cooldownRemaining < TimeSpan.FromSeconds(PollSeconds)
+                                ? cooldownRemaining
+                                : TimeSpan.FromSeconds(PollSeconds)
+                        );
+                        continue;
+                    }
+                }
+
+                var settings = await LibraryReconciliationStorage.LoadAsync(
+                    pathProvider,
+                    CancellationToken.None
+                );
+
+                if (!settings.Enabled || !settings.SyncReaparrLibrary)
+                {
+                    lock (state.Gate)
+                        state.WorkerRunning = false;
+                    return;
+                }
+
+                int requestVersion;
+                lock (state.Gate)
+                    requestVersion = state.Version;
+
+                log.Here()
+                    .Information(
+                        "Queueing automatic Reaparr DB sync for Plex library {PlexLibraryId} "
+                            + "after mover idle window. Automatic DB syncs are limited to "
+                            + "one per library every {CooldownMinutes} minutes.",
+                        plexLibraryId,
+                        MinimumAutomaticSyncIntervalSeconds / 60
+                    );
+
+                var syncResult = await commandExecutor.Send(
+                    new QueueLibrarySyncJobCommand([plexLibraryId], Force: true),
+                    CancellationToken.None
+                );
+
+                if (syncResult.IsFailed)
+                {
+                    log.Here()
+                        .Warning(
+                            "Automatic Reaparr DB sync queue failed for library "
+                                + "{PlexLibraryId}: {Error}",
+                            plexLibraryId,
+                            syncResult.Errors.FirstOrDefault()?.Message
+                        );
+                    await Task.Delay(TimeSpan.FromSeconds(PollSeconds));
+                    continue;
+                }
+
+                lock (state.Gate)
+                {
+                    state.LastSyncQueuedUtc = DateTime.UtcNow;
+
+                    if (state.Version == requestVersion)
+                    {
+                        state.WorkerRunning = false;
+                        return;
+                    }
+                }
+
+                idleSinceUtc = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            log.Here()
+                .Warning(
+                    ex,
+                    "Automatic Reaparr DB sync coordinator failed for Plex library "
+                        + "{PlexLibraryId}",
+                    plexLibraryId
+                );
+
+            lock (state.Gate)
+                state.WorkerRunning = false;
+        }
     }
 }
 
@@ -741,6 +1010,7 @@ public sealed class ReconcileCompletedDownloadCommandHandler
     private readonly IRadarrSettings _radarrSettings;
     private readonly ISonarrSettings _sonarrSettings;
     private readonly IPathProvider _pathProvider;
+    private readonly IMoveDownloadFileScheduler _moveDownloadFileScheduler;
 
     public ReconcileCompletedDownloadCommandHandler(
         ILogger log,
@@ -750,7 +1020,8 @@ public sealed class ReconcileCompletedDownloadCommandHandler
         ICommandExecutor commandExecutor,
         IRadarrSettings radarrSettings,
         ISonarrSettings sonarrSettings,
-        IPathProvider pathProvider
+        IPathProvider pathProvider,
+        IMoveDownloadFileScheduler moveDownloadFileScheduler
     )
     {
         _log = log.ForContext<ReconcileCompletedDownloadCommandHandler>();
@@ -761,6 +1032,7 @@ public sealed class ReconcileCompletedDownloadCommandHandler
         _radarrSettings = radarrSettings;
         _sonarrSettings = sonarrSettings;
         _pathProvider = pathProvider;
+        _moveDownloadFileScheduler = moveDownloadFileScheduler;
     }
 
     public async Task<Result> ExecuteAsync(
@@ -805,7 +1077,8 @@ public sealed class ReconcileCompletedDownloadCommandHandler
                 _dbContextFactory,
                 _httpClientFactory,
                 _commandExecutor,
-                _pathProvider
+                _pathProvider,
+                _moveDownloadFileScheduler
             );
         }
 
