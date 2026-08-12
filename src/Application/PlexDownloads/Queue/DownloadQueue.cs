@@ -20,6 +20,7 @@ public class DownloadQueue : IDownloadQueue
 
     private readonly Channel<int> _plexServersToCheckChannel = Channel.CreateUnbounded<int>();
     private readonly ConcurrentDictionary<Guid, DateTime> _retryCooldownUntil = new();
+    private readonly ConcurrentDictionary<int, byte> _queuedPlexServerChecks = new();
     private readonly ConcurrentDictionary<int, byte> _scheduledQueueRechecks = new();
 
     private readonly CancellationToken _token = new();
@@ -58,7 +59,7 @@ public class DownloadQueue : IDownloadQueue
                 nameof(PlexServer)
             );
         foreach (var plexServerId in plexServerIds)
-            await _plexServersToCheckChannel.Writer.WriteAsync(plexServerId, _token);
+            await QueueServerCheckAsync(plexServerId);
 
         return Result.Ok();
     }
@@ -85,6 +86,8 @@ public class DownloadQueue : IDownloadQueue
     {
         if (plexServerId <= 0)
             return ResultExtensions.IsInvalidId(nameof(plexServerId), plexServerId).LogWarning();
+
+        PruneExpiredRetryCooldowns();
 
         // Create a new DbContext for this operation to avoid threading issues
         using var dbContext = await _dbContextFactory.CreateAsync();
@@ -261,6 +264,33 @@ public class DownloadQueue : IDownloadQueue
         return false;
     }
 
+    private async Task QueueServerCheckAsync(int plexServerId)
+    {
+        if (!_queuedPlexServerChecks.TryAdd(plexServerId, 0))
+            return;
+
+        try
+        {
+            await _plexServersToCheckChannel.Writer.WriteAsync(plexServerId, _token);
+        }
+        catch
+        {
+            _queuedPlexServerChecks.TryRemove(plexServerId, out _);
+            throw;
+        }
+    }
+
+    private void PruneExpiredRetryCooldowns()
+    {
+        var now = DateTime.UtcNow;
+
+        foreach (var item in _retryCooldownUntil)
+        {
+            if (item.Value <= now)
+                _retryCooldownUntil.TryRemove(item.Key, out _);
+        }
+    }
+
     private void ScheduleQueueRecheck(int plexServerId)
     {
         if (!_scheduledQueueRechecks.TryAdd(plexServerId, 0))
@@ -273,7 +303,7 @@ public class DownloadQueue : IDownloadQueue
                 {
                     await Task.Delay(_retryCooldown + TimeSpan.FromSeconds(2), _token);
                     _scheduledQueueRechecks.TryRemove(plexServerId, out _);
-                    await _plexServersToCheckChannel.Writer.WriteAsync(plexServerId, _token);
+                    await QueueServerCheckAsync(plexServerId);
                 }
                 catch (OperationCanceledException) when (_token.IsCancellationRequested)
                 {
@@ -326,6 +356,7 @@ public class DownloadQueue : IDownloadQueue
             try
             {
                 plexServerId = await _plexServersToCheckChannel.Reader.ReadAsync(_token);
+                _queuedPlexServerChecks.TryRemove(plexServerId, out _);
             }
             catch (OperationCanceledException) when (_token.IsCancellationRequested)
             {
