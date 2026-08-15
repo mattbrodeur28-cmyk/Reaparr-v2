@@ -150,7 +150,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v8353';
+const DISCOVER_CACHE_KEY = 'discover-feed-v8354a';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
@@ -187,19 +187,42 @@ const IDENTITY_BASIS_RANK: Record<DiscoverIdentityBasis, number> = {
 	'title-year': 1,
 };
 
+// V8.3.5.4a NUMERIC COMPARISON STATE
+//
+// Mirrors the integer values of the C# PlexMediaComparisonState enum in
+// src/Domain/_Shared/Enums/PlexMediaComparisonState.cs. The API serializes
+// enums as integers at runtime (FastEndpoints uses JsonSerializerDefaults.Web
+// and no JsonStringEnumConverter is registered for responses), while the
+// generated TS enum is string-valued because NSwag document generation *does*
+// register one. Keep this table in sync with the C# enum.
+const NUMERIC_COMPARISON_STATE: Record<number, PlexMediaComparisonState> = {
+	[-1]: PlexMediaComparisonState.Unknown,
+	0: PlexMediaComparisonState.NotCompared,
+	1: PlexMediaComparisonState.Owned,
+	2: PlexMediaComparisonState.Pending,
+	3: PlexMediaComparisonState.Missing,
+	4: PlexMediaComparisonState.HigherQuality,
+	5: PlexMediaComparisonState.Partial,
+	6: PlexMediaComparisonState.PartialAndHigherQuality,
+};
+
 function normalizeComparisonState(value: unknown): PlexMediaComparisonState {
 	const namedEntries = Object.entries(
 		PlexMediaComparisonState as unknown as Record<string, unknown>,
 	).filter(([key]) => Number.isNaN(Number(key)));
 
+	// Exact match first, so a string payload keeps working unchanged if the
+	// backend serializer is ever aligned with the OpenAPI schema.
 	for (const [, candidate] of namedEntries) {
 		if (candidate === value) {
 			return candidate as PlexMediaComparisonState;
 		}
 	}
 
-	if (typeof value === 'string') {
-		const normalized = value.trim().toLocaleLowerCase();
+	if (typeof value === 'string' || typeof value === 'number') {
+		const raw = String(value).trim();
+		const normalized = raw.toLocaleLowerCase();
+
 		const byName = namedEntries.find(([key]) =>
 			key.toLocaleLowerCase() === normalized,
 		);
@@ -207,11 +230,11 @@ function normalizeComparisonState(value: unknown): PlexMediaComparisonState {
 			return byName[1] as PlexMediaComparisonState;
 		}
 
-		const numeric = Number(value);
+		const numeric = raw === '' ? Number.NaN : Number(raw);
 		if (Number.isFinite(numeric)) {
-			const byNumber = namedEntries.find(([, candidate]) => candidate === numeric);
-			if (byNumber) {
-				return byNumber[1] as PlexMediaComparisonState;
+			const mapped = NUMERIC_COMPARISON_STATE[numeric];
+			if (mapped !== undefined) {
+				return mapped;
 			}
 		}
 	}
