@@ -149,7 +149,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v82';
+const DISCOVER_CACHE_KEY = 'discover-feed-v83';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
@@ -185,6 +185,38 @@ const IDENTITY_BASIS_RANK: Record<DiscoverIdentityBasis, number> = {
 	plex: 3,
 	'title-year': 1,
 };
+
+function normalizeComparisonState(value: unknown): PlexMediaComparisonState {
+	const namedEntries = Object.entries(
+		PlexMediaComparisonState as unknown as Record<string, unknown>,
+	).filter(([key]) => Number.isNaN(Number(key)));
+
+	for (const [, candidate] of namedEntries) {
+		if (candidate === value) {
+			return candidate as PlexMediaComparisonState;
+		}
+	}
+
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLocaleLowerCase();
+		const byName = namedEntries.find(([key]) =>
+			key.toLocaleLowerCase() === normalized,
+		);
+		if (byName) {
+			return byName[1] as PlexMediaComparisonState;
+		}
+
+		const numeric = Number(value);
+		if (Number.isFinite(numeric)) {
+			const byNumber = namedEntries.find(([, candidate]) => candidate === numeric);
+			if (byNumber) {
+				return byNumber[1] as PlexMediaComparisonState;
+			}
+		}
+	}
+
+	return PlexMediaComparisonState.Unknown;
+}
 
 export const useDiscoverStore = defineStore('discoverStore', () => {
 	const defaultState: IDiscoverStoreState = {
@@ -280,7 +312,7 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 						.filter((source) => isServerOnline(source.media.plexServerId))
 						.map((source) => ({
 							media: source.media,
-							comparisonState: source.comparisonState,
+							comparisonState: normalizeComparisonState(source.comparisonState),
 						}));
 
 					return loadIdentities(plexItems).pipe(
@@ -547,9 +579,14 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 		sources: IDiscoverSource[],
 		wantedItems: IDiscoverWantedItem[],
 	): IDiscoverItem[] {
-		const sortedSources = [...sources].sort((a, b) =>
-			getIdentityConfidence(b) - getIdentityConfidence(a),
-		);
+		const sortedSources = sources
+			.map((source) => ({
+				...source,
+				comparisonState: normalizeComparisonState(source.comparisonState),
+			}))
+			.sort((a, b) =>
+				getIdentityConfidence(b) - getIdentityConfidence(a),
+			);
 
 		const groups = new Map<string, IGroupBucket>();
 		const exactKeyToGroup = new Map<string, string>();
@@ -807,9 +844,12 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 
 	function hydrateCachedItems(items: IDiscoverItem[]): IDiscoverItem[] {
 		return items.flatMap((item) => {
-			const onlineSources = item.sources.filter((source) =>
-				isServerOnline(source.media.plexServerId),
-			);
+			const onlineSources = item.sources
+				.filter((source) => isServerOnline(source.media.plexServerId))
+				.map((source) => ({
+					...source,
+					comparisonState: normalizeComparisonState(source.comparisonState),
+				}));
 
 			if (onlineSources.length === 0) {
 				return [];
@@ -895,9 +935,10 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 	}
 
 	function getAggregateComparisonState(sources: IDiscoverSource[]): PlexMediaComparisonState {
-		return [...sources]
-			.sort((a, b) => (STATE_RANK[b.comparisonState] ?? 0) - (STATE_RANK[a.comparisonState] ?? 0))[0]
-			?.comparisonState ?? PlexMediaComparisonState.Unknown;
+		return sources
+			.map((source) => normalizeComparisonState(source.comparisonState))
+			.sort((a, b) => (STATE_RANK[b] ?? 0) - (STATE_RANK[a] ?? 0))[0]
+			?? PlexMediaComparisonState.Unknown;
 	}
 
 	function getFallbackIdentityKey(media: PlexMediaSlimDTO): string {

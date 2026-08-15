@@ -17,6 +17,7 @@ public sealed record MoveConcurrencyStatusDTO
 {
     public int MaxConcurrentMovers { get; init; }
     public bool FairAcrossServers { get; init; } = true;
+    public int ActiveDownloads { get; init; }
     public int ActiveMovers { get; init; }
     public long ProcessWorkingSetBytes { get; init; }
     public long ProcessPrivateMemoryBytes { get; init; }
@@ -122,6 +123,16 @@ internal static class MoveConcurrencyStatusBuilder
             .Select(x => x.Id)
             .ToListAsync(ct);
 
+        var activeDownloads =
+            await dbContext.DownloadTaskMovieFile.CountAsync(
+                x => x.DownloadStatus == DownloadStatus.Downloading,
+                ct
+            )
+            + await dbContext.DownloadTaskTvShowEpisodeFile.CountAsync(
+                x => x.DownloadStatus == DownloadStatus.Downloading,
+                ct
+            );
+
         var activeMovers = 0;
         foreach (var plexServerId in plexServerIds)
         {
@@ -142,6 +153,7 @@ internal static class MoveConcurrencyStatusBuilder
         {
             MaxConcurrentMovers = settings.MaxConcurrentMovers,
             FairAcrossServers = true,
+            ActiveDownloads = activeDownloads,
             ActiveMovers = activeMovers,
             ProcessWorkingSetBytes = process.WorkingSet64,
             ProcessPrivateMemoryBytes = process.PrivateMemorySize64,

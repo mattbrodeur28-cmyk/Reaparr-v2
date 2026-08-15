@@ -410,6 +410,25 @@ export const useDownloadStore = defineStore(StoreNames.DownloadStore, () => {
 		return null;
 	}
 
+	function collectLeafDownloads(nodes: DownloadProgressDTO[]): DownloadProgressDTO[] {
+		const leaves: DownloadProgressDTO[] = [];
+
+		const visit = (items: DownloadProgressDTO[]) => {
+			for (const item of items) {
+				const children = item.children ?? [];
+				if (children.length === 0) {
+					leaves.push(item);
+					continue;
+				}
+
+				visit(children);
+			}
+		};
+
+		visit(nodes);
+		return leaves;
+	}
+
 	function removeDeleted(nodes: DownloadProgressDTO[], deletedIds: string[]): DownloadProgressDTO[] {
 		if (deletedIds.length === 0) return nodes;
 
@@ -465,7 +484,11 @@ export const useDownloadStore = defineStore(StoreNames.DownloadStore, () => {
 			}).filter((x) => x.downloads.length > 0);
 		}),
 		getActiveDownloadList(serverId = 0): DownloadProgressDTO[] {
-			return getters.getDownloadsByServerId(serverId).flatMap((x) => x.children).flatMap((x) => x.children).flatMap((x) => x.children).filter((x) => x.status != DownloadStatus.Completed && x.status != DownloadStatus.Error);
+			return collectLeafDownloads(getters.getDownloadsByServerId(serverId))
+				.filter((x) =>
+					x.status != DownloadStatus.Completed
+					&& x.status != DownloadStatus.Error,
+				);
 		},
 		/**
          * Get the total number of download tasks that are downloadable in the download list.

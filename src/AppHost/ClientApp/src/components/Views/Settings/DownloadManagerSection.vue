@@ -51,8 +51,14 @@
 						<q-chip
 							color="primary"
 							text-color="white"
+							icon="mdi-download">
+							{{ moveStatus.activeDownloads }} active downloads
+						</q-chip>
+						<q-chip
+							color="primary"
+							text-color="white"
 							icon="mdi-swap-horizontal-bold">
-							{{ moveStatus.activeMovers }} / {{ moveStatus.maxConcurrentMovers }} active
+							{{ moveStatus.activeMovers }} / {{ moveStatus.maxConcurrentMovers }} movers
 						</q-chip>
 						<q-chip
 							v-if="moveStatus.fairAcrossServers"
@@ -131,6 +137,7 @@ import { useSettingsStore } from '@store';
 interface IMoveConcurrencyStatus {
 	maxConcurrentMovers: number;
 	fairAcrossServers: boolean;
+	activeDownloads: number;
 	activeMovers: number;
 	processWorkingSetBytes: number;
 	processPrivateMemoryBytes: number;
@@ -153,6 +160,7 @@ const settingsStore = useSettingsStore();
 const moveStatus = reactive<IMoveConcurrencyStatus>({
 	maxConcurrentMovers: 4,
 	fairAcrossServers: true,
+	activeDownloads: 0,
 	activeMovers: 0,
 	processWorkingSetBytes: 0,
 	processPrivateMemoryBytes: 0,
