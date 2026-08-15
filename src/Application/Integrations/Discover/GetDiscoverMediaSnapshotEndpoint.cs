@@ -454,6 +454,15 @@ public sealed class GetDiscoverMediaSnapshotEndpoint
     private static int ClampItemLimit(int value) =>
         Math.Clamp(value, MinItemLimitPerState, MaxItemLimitPerState);
 
+    // V8.3.5.3 SNAPSHOT CACHE VERSION
+    //
+    // Bump this whenever the meaning of a cached snapshot changes: comparison
+    // state derivation, owned quality source, DTO shape, or the set of states
+    // in DiscoverStates. The snapshot cache is a file under /Config and
+    // survives container updates, so without a version component a deploy
+    // keeps serving pre-deploy data for up to StaleFor (24h).
+    private const string SnapshotCacheVersion = "v8353";
+
     private static string BuildSignature(
         List<DiscoverSnapshotLibraryDTO> libraries,
         int itemLimitPerState
@@ -462,7 +471,7 @@ public sealed class GetDiscoverMediaSnapshotEndpoint
         var raw = string.Join(
             "|",
             libraries.Select(x => $"{x.PlexLibraryId}:{x.MediaType}")
-        ) + $"|limit:{itemLimitPerState}";
+        ) + $"|limit:{itemLimitPerState}|schema:{SnapshotCacheVersion}";
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(hash).ToLowerInvariant();

@@ -686,6 +686,20 @@ const upgradeStates: PlexMediaComparisonState[] = [
 	PlexMediaComparisonState.PartialAndHigherQuality,
 ];
 
+// V8.3.5.3: an item qualifies for a reason filter when the aggregate state
+// matches, or when any individual online source matches. Multi-server items
+// otherwise collapse to a single state and disappear from the narrower tabs.
+function itemMatchesReason(
+	item: IDiscoverItem,
+	states: PlexMediaComparisonState[],
+): boolean {
+	if (states.includes(item.comparisonState)) {
+		return true;
+	}
+
+	return item.sources.some((source) => states.includes(source.comparisonState));
+}
+
 const applyWantedOnly = computed(() =>
 	get(wantedOnly)
 	&& discoverStore.arrConfigured
@@ -805,10 +819,17 @@ const filteredItems = computed(() => {
 		if (typeFilter === 'tv' && liveItem.media.type !== PlexMediaType.TvShow) {
 			return [];
 		}
-		if (reason === 'missing' && !missingStates.includes(liveItem.comparisonState)) {
+		// V8.3.5.3 REASON FILTER OVER SOURCE STATES
+		//
+		// liveItem.comparisonState is an aggregate that keeps only the
+		// highest-ranked state across sources, and upgrade states outrank
+		// missing states. Filtering on the aggregate alone hides items that are
+		// missing on one server and an upgrade on another. Match against every
+		// source state, then fall back to the aggregate.
+		if (reason === 'missing' && !itemMatchesReason(liveItem, missingStates)) {
 			return [];
 		}
-		if (reason === 'upgrades' && !upgradeStates.includes(liveItem.comparisonState)) {
+		if (reason === 'upgrades' && !itemMatchesReason(liveItem, upgradeStates)) {
 			return [];
 		}
 
