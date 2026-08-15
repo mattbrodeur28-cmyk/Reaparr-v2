@@ -32,7 +32,7 @@ public class DownloadQueue : IDownloadQueue
         public int ConsecutiveServerFailures { get; set; }
         public int BackoffLevel { get; set; }
         public DateTime? OpenUntilUtc { get; set; }
-        public Guid? LastStartedTaskId { get; set; }
+        public DownloadTaskKey? LastStartedTaskKey { get; set; }
         public bool ProbePending { get; set; }
         public bool ProbeInFlight { get; set; }
     }
@@ -148,9 +148,7 @@ public class DownloadQueue : IDownloadQueue
                 );
         }
 
-        var downloadTasks = await dbContext.GetAllDownloadTasksByServerAsync(plexServerId, cancellationToken: _token);
-
-        ObservePreviousServerAttempt(plexServerId, plexServerName, downloadTasks);
+        await ObservePreviousServerAttempt(plexServerId, plexServerName, dbContext);
 
         if (TryGetOpenCircuitDelay(plexServerId, out var circuitDelay))
         {
@@ -165,9 +163,9 @@ public class DownloadQueue : IDownloadQueue
             return Result.Ok();
         }
 
-        var hasDownloadingTask = downloadTasks.Any(x => x.DownloadStatus == DownloadStatus.Downloading);
+        var hasDownloadingTask =
+            await dbContext.HasDownloadingDownloadTaskLeafByServerAsync(plexServerId, _token);
 
-        // This avoids race condition where job is finishing but still registered in Quartz
         if (hasDownloadingTask && await _downloadTaskScheduler.IsServerDownloading(plexServerId))
         {
             return Result
@@ -181,16 +179,24 @@ public class DownloadQueue : IDownloadQueue
                 nameof(PlexServer),
                 plexServerName
             );
-        var nextDownloadTaskResult = GetNextDownloadTask(downloadTasks);
-        if (nextDownloadTaskResult.IsFailed)
+
+        var cooldownTaskIds = _retryCooldownUntil.Keys.ToArray();
+        var nextDownloadTask =
+            await dbContext.GetNextDownloadTaskLeafByServerAsync(
+                plexServerId,
+                cooldownTaskIds,
+                _token
+            );
+
+        if (nextDownloadTask is null)
         {
-            if (HasPendingQueueWork(downloadTasks))
+            if (await dbContext.HasPendingDownloadQueueWorkByServerAsync(plexServerId, _token))
             {
                 ScheduleQueueRecheck(plexServerId);
                 _log.Here()
                     .Debug(
                         "Pending download work remains for PlexServer {PlexServerName}; "
-                        + "scheduled a queue recheck after the retry cooldown.",
+                            + "scheduled a queue recheck after the retry cooldown.",
                         plexServerName
                     );
             }
@@ -206,77 +212,59 @@ public class DownloadQueue : IDownloadQueue
             return Result.Ok();
         }
 
-        var nextDownloadTask = nextDownloadTaskResult.Value;
-
         _log.Here()
             .Information(
                 "Selected download task {NextDownloadTaskFullTitle} to start as the next task",
                 nextDownloadTask.FullTitle
             );
 
+        var nextDownloadTaskKey = nextDownloadTask.ToKey();
         _retryCooldownUntil[nextDownloadTask.Id] = DateTime.UtcNow + _retryCooldown;
-        TrackStartedServerAttempt(plexServerId, nextDownloadTask.Id);
-        await _downloadTaskScheduler.StartDownloadTaskJob(nextDownloadTask.ToKey());
+        TrackStartedServerAttempt(plexServerId, nextDownloadTaskKey);
+        await _downloadTaskScheduler.StartDownloadTaskJob(nextDownloadTaskKey);
 
         return Result.Ok(nextDownloadTask);
     }
 
-    private void ObservePreviousServerAttempt(
+    private async Task ObservePreviousServerAttempt(
         int plexServerId,
         string plexServerName,
-        IEnumerable<DownloadTaskGeneric> downloadTasks
+        IReaparrDbContext dbContext
     )
     {
         if (!_serverCircuitStates.TryGetValue(plexServerId, out var state))
             return;
 
-        Guid? lastStartedTaskId;
+        DownloadTaskKey? lastStartedTaskKey;
         bool probeInFlight;
 
         lock (state.Gate)
         {
-            lastStartedTaskId = state.LastStartedTaskId;
+            lastStartedTaskKey = state.LastStartedTaskKey;
             probeInFlight = state.ProbeInFlight;
         }
 
-        if (!lastStartedTaskId.HasValue)
+        if (lastStartedTaskKey is null || !lastStartedTaskKey.IsValid)
             return;
 
-        var previousTask = FindLeafById(downloadTasks, lastStartedTaskId.Value);
-        if (previousTask is null)
+        var previousStatus = await dbContext.GetDownloadTaskStatusAsync(lastStartedTaskKey, _token);
+
+        if (previousStatus is DownloadStatus.Queued or DownloadStatus.Downloading)
             return;
 
-        if (
-            previousTask.DownloadStatus
-            is DownloadStatus.Queued
-                or DownloadStatus.Downloading
-        )
+        if (previousStatus == DownloadStatus.ServerUnreachable)
         {
+            RegisterServerFailure(plexServerId, plexServerName, lastStartedTaskKey, probeInFlight);
             return;
         }
 
-        if (previousTask.DownloadStatus == DownloadStatus.ServerUnreachable)
-        {
-            RegisterServerFailure(
-                plexServerId,
-                plexServerName,
-                lastStartedTaskId.Value,
-                probeInFlight
-            );
-            return;
-        }
-
-        RegisterServerSuccess(
-            plexServerId,
-            plexServerName,
-            lastStartedTaskId.Value
-        );
+        RegisterServerSuccess(plexServerId, plexServerName, lastStartedTaskKey);
     }
 
     private void RegisterServerFailure(
         int plexServerId,
         string plexServerName,
-        Guid taskId,
+        DownloadTaskKey taskKey,
         bool wasProbe
     )
     {
@@ -287,10 +275,10 @@ public class DownloadQueue : IDownloadQueue
 
         lock (state.Gate)
         {
-            if (state.LastStartedTaskId != taskId)
+            if (state.LastStartedTaskKey?.Id != taskKey.Id)
                 return;
 
-            state.LastStartedTaskId = null;
+            state.LastStartedTaskKey = null;
 
             if (wasProbe || state.ProbeInFlight)
             {
@@ -325,7 +313,7 @@ public class DownloadQueue : IDownloadQueue
     private void RegisterServerSuccess(
         int plexServerId,
         string plexServerName,
-        Guid taskId
+        DownloadTaskKey taskKey
     )
     {
         if (!_serverCircuitStates.TryGetValue(plexServerId, out var state))
@@ -333,7 +321,7 @@ public class DownloadQueue : IDownloadQueue
 
         lock (state.Gate)
         {
-            if (state.LastStartedTaskId != taskId)
+            if (state.LastStartedTaskKey?.Id != taskKey.Id)
                 return;
 
             var hadCircuitHistory =
@@ -342,7 +330,7 @@ public class DownloadQueue : IDownloadQueue
                 || state.OpenUntilUtc.HasValue
                 || state.ProbeInFlight;
 
-            state.LastStartedTaskId = null;
+            state.LastStartedTaskKey = null;
             state.ConsecutiveServerFailures = 0;
             state.BackoffLevel = 0;
             state.OpenUntilUtc = null;
@@ -428,7 +416,10 @@ public class DownloadQueue : IDownloadQueue
         }
     }
 
-    private void TrackStartedServerAttempt(int plexServerId, Guid taskId)
+    private void TrackStartedServerAttempt(
+        int plexServerId,
+        DownloadTaskKey taskKey
+    )
     {
         var state = _serverCircuitStates.GetOrAdd(
             plexServerId,
@@ -437,7 +428,7 @@ public class DownloadQueue : IDownloadQueue
 
         lock (state.Gate)
         {
-            state.LastStartedTaskId = taskId;
+            state.LastStartedTaskKey = taskKey;
 
             if (state.ProbePending)
             {
@@ -449,121 +440,6 @@ public class DownloadQueue : IDownloadQueue
                 state.ProbeInFlight = false;
             }
         }
-    }
-
-    private static DownloadTaskGeneric? FindLeafById(
-        IEnumerable<DownloadTaskGeneric> downloadTasks,
-        Guid taskId
-    )
-    {
-        foreach (var downloadTask in downloadTasks)
-        {
-            if (downloadTask.Children.Any())
-            {
-                var child = FindLeafById(downloadTask.Children, taskId);
-                if (child is not null)
-                    return child;
-
-                continue;
-            }
-
-            if (downloadTask.Id == taskId)
-                return downloadTask;
-        }
-
-        return null;
-    }
-
-    private bool IsInRetryCooldown(DownloadTaskGeneric task)
-    {
-        if (!_retryCooldownUntil.TryGetValue(task.Id, out var until))
-            return false;
-
-        if (DateTime.UtcNow < until)
-            return true;
-
-        _retryCooldownUntil.TryRemove(task.Id, out _);
-        return false;
-    }
-
-    /// <summary>
-    /// Determines the next downloadable <see cref="DownloadTaskGeneric"/> to be executed.
-    /// </summary>
-    /// <param name="downloadTasks"> The list of downloadTasks to check for the next downloadable task.</param>
-    /// <returns> The next downloadable <see cref="DownloadTaskGeneric"/> to be executed.</returns>
-    internal Result<DownloadTaskGeneric> GetNextDownloadTask(ICollection<DownloadTaskGeneric> downloadTasks)
-    {
-        var downloadingTask = FindFirstLeafByStatus(downloadTasks, DownloadStatus.Downloading);
-        if (downloadingTask is not null)
-            return Result.Fail("There is already a downloadTask downloading.").LogDebug();
-
-        var autoPausedTask = FindFirstLeafByStatus(downloadTasks, DownloadStatus.AutoPaused, IsInRetryCooldown);
-        if (autoPausedTask is not null)
-            return Result.Ok(autoPausedTask);
-
-        var autoMovePausedTask = FindFirstLeafByStatus(
-            downloadTasks,
-            DownloadStatus.AutoMovePaused,
-            IsInRetryCooldown
-        );
-        if (autoMovePausedTask is not null)
-            return Result.Ok(autoMovePausedTask);
-
-        // Prefer untouched queued work over retry/error states.
-        var queuedTask = FindFirstLeafByStatus(downloadTasks, DownloadStatus.Queued, IsInRetryCooldown);
-        if (queuedTask is not null)
-            return Result.Ok(queuedTask);
-
-        var downloadClientErrorTask = FindFirstLeafByStatus(
-            downloadTasks,
-            DownloadStatus.DownloadClientError,
-            IsInRetryCooldown
-        );
-        if (downloadClientErrorTask is not null)
-            return Result.Ok(downloadClientErrorTask);
-
-        var errorTask = FindFirstLeafByStatus(downloadTasks, DownloadStatus.Error, IsInRetryCooldown);
-        if (errorTask is not null)
-            return Result.Ok(errorTask);
-
-        var serverUnreachableTask = FindFirstLeafByStatus(
-            downloadTasks,
-            DownloadStatus.ServerUnreachable,
-            IsInRetryCooldown
-        );
-        if (serverUnreachableTask is not null)
-            return Result.Ok(serverUnreachableTask);
-
-        return Result.Fail("There were no downloadTasks left to download.").LogDebug();
-    }
-
-    private static bool HasPendingQueueWork(IEnumerable<DownloadTaskGeneric> downloadTasks)
-    {
-        foreach (var downloadTask in downloadTasks)
-        {
-            if (downloadTask.Children.Any())
-            {
-                if (HasPendingQueueWork(downloadTask.Children))
-                    return true;
-
-                continue;
-            }
-
-            if (
-                downloadTask.DownloadStatus
-                is DownloadStatus.AutoPaused
-                    or DownloadStatus.AutoMovePaused
-                    or DownloadStatus.ServerUnreachable
-                    or DownloadStatus.DownloadClientError
-                    or DownloadStatus.Error
-                    or DownloadStatus.Queued
-            )
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private async Task QueueServerCheckAsync(int plexServerId)
@@ -633,30 +509,6 @@ public class DownloadQueue : IDownloadQueue
             },
             _token
         );
-    }
-
-    private static DownloadTaskGeneric? FindFirstLeafByStatus(
-        IEnumerable<DownloadTaskGeneric> downloadTasks,
-        DownloadStatus status,
-        Func<DownloadTaskGeneric, bool>? skip = null
-    )
-    {
-        foreach (var downloadTask in downloadTasks)
-        {
-            if (downloadTask.Children.Any())
-            {
-                var childTask = FindFirstLeafByStatus(downloadTask.Children, status, skip);
-                if (childTask is not null)
-                    return childTask;
-
-                continue;
-            }
-
-            if (downloadTask.DownloadStatus == status && (skip is null || !skip(downloadTask)))
-                return downloadTask;
-        }
-
-        return null;
     }
 
     private async Task ExecuteDownloadQueueCheck()

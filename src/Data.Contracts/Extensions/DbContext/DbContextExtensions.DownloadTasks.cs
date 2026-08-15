@@ -343,6 +343,154 @@ public static partial class DbContextExtensions
         }
     }
 
+    private sealed class DownloadQueueLeafCandidate
+    {
+        public Guid Id { get; init; }
+        public DownloadTaskType Type { get; init; }
+        public DateTime CreatedAt { get; init; }
+    }
+
+    public static async Task<DownloadTaskGeneric?> GetNextDownloadTaskLeafByServerAsync(
+        this IReaparrDbContext dbContext,
+        int plexServerId,
+        IReadOnlyCollection<Guid>? excludedTaskIds = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (plexServerId <= 0)
+            return null;
+
+        var excludedIds = excludedTaskIds is { Count: > 0 } ? excludedTaskIds.ToArray() : [];
+
+        var statusPriority = new[]
+        {
+            DownloadStatus.AutoPaused,
+            DownloadStatus.AutoMovePaused,
+            DownloadStatus.Queued,
+            DownloadStatus.DownloadClientError,
+            DownloadStatus.Error,
+            DownloadStatus.ServerUnreachable,
+        };
+
+        foreach (var status in statusPriority)
+        {
+            var movieQuery = dbContext
+                .DownloadTaskMovieFile.AsNoTracking()
+                .Where(x => x.PlexServerId == plexServerId && x.DownloadStatus == status);
+
+            var episodeQuery = dbContext
+                .DownloadTaskTvShowEpisodeFile.AsNoTracking()
+                .Where(x => x.PlexServerId == plexServerId && x.DownloadStatus == status);
+
+            if (excludedIds.Length > 0)
+            {
+                movieQuery = movieQuery.Where(x => !excludedIds.Contains(x.Id));
+                episodeQuery = episodeQuery.Where(x => !excludedIds.Contains(x.Id));
+            }
+
+            var movieCandidate = await movieQuery
+                .OrderBy(x => x.CreatedAt)
+                .Select(x => new DownloadQueueLeafCandidate
+                {
+                    Id = x.Id,
+                    Type = DownloadTaskType.MovieData,
+                    CreatedAt = x.CreatedAt,
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var episodeCandidate = await episodeQuery
+                .OrderBy(x => x.CreatedAt)
+                .Select(x => new DownloadQueueLeafCandidate
+                {
+                    Id = x.Id,
+                    Type = DownloadTaskType.EpisodeData,
+                    CreatedAt = x.CreatedAt,
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            DownloadQueueLeafCandidate? candidate = null;
+
+            if (movieCandidate is not null && episodeCandidate is not null)
+            {
+                candidate =
+                    movieCandidate.CreatedAt <= episodeCandidate.CreatedAt
+                        ? movieCandidate
+                        : episodeCandidate;
+            }
+            else
+            {
+                candidate = movieCandidate ?? episodeCandidate;
+            }
+
+            if (candidate is null)
+                continue;
+
+            return await dbContext.GetDownloadTaskAsync(candidate.Id, candidate.Type, cancellationToken);
+        }
+
+        return null;
+    }
+
+    public static async Task<bool> HasDownloadingDownloadTaskLeafByServerAsync(
+        this IReaparrDbContext dbContext,
+        int plexServerId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (plexServerId <= 0)
+            return false;
+
+        if (
+            await dbContext.DownloadTaskMovieFile.AnyAsync(
+                x => x.PlexServerId == plexServerId && x.DownloadStatus == DownloadStatus.Downloading,
+                cancellationToken
+            )
+        )
+        {
+            return true;
+        }
+
+        return await dbContext.DownloadTaskTvShowEpisodeFile.AnyAsync(
+            x => x.PlexServerId == plexServerId && x.DownloadStatus == DownloadStatus.Downloading,
+            cancellationToken
+        );
+    }
+
+    public static async Task<bool> HasPendingDownloadQueueWorkByServerAsync(
+        this IReaparrDbContext dbContext,
+        int plexServerId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (plexServerId <= 0)
+            return false;
+
+        var statuses = new[]
+        {
+            DownloadStatus.AutoPaused,
+            DownloadStatus.AutoMovePaused,
+            DownloadStatus.Queued,
+            DownloadStatus.DownloadClientError,
+            DownloadStatus.Error,
+            DownloadStatus.ServerUnreachable,
+        };
+
+        if (
+            await dbContext.DownloadTaskMovieFile.AnyAsync(
+                x => x.PlexServerId == plexServerId && statuses.Contains(x.DownloadStatus),
+                cancellationToken
+            )
+        )
+        {
+            return true;
+        }
+
+        return await dbContext.DownloadTaskTvShowEpisodeFile.AnyAsync(
+            x => x.PlexServerId == plexServerId && statuses.Contains(x.DownloadStatus),
+            cancellationToken
+        );
+    }
+
     public static async Task<List<DownloadTaskGeneric>> GetAllDownloadTasksByServerAsync(
         this IReaparrDbContext dbContext,
         int plexServerId = 0,
