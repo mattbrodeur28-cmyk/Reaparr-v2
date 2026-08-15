@@ -54,106 +54,77 @@ public sealed class MediaQueryCache : IMediaQueryCache
         MediaQueryFilter filter,
         CancellationToken cancellationToken)
     {
-        // Single-library queries are small — bypass the cache and hit the DB directly.
-        if (filter.PlexLibraryId > 0)
-            return await BypassCacheAsync(filter, cancellationToken, "specific library scope");
-
-        if (!string.IsNullOrWhiteSpace(filter.Parameters.Query))
-            return await BypassCacheAsync(filter, cancellationToken, "query parameter is set");
-
-        if (!string.IsNullOrWhiteSpace(filter.Parameters.Filter))
-            return await BypassCacheAsync(filter, cancellationToken, "filter parameter is set");
-
-        if (filter.ComparisonState.HasValue)
-            return await BypassCacheAsync(filter, cancellationToken, "comparison state filter is set");
-
-        var libraryIds = await ResolveLibraryIdsAsync(filter, cancellationToken);
-        var sort = filter.Parameters.Sort.Normalize(libraryIds.Count);
-        if (sort is null)
-        {
-            _log.Here().Debug("Bypassing media query cache: unsupported sort {Sort}", filter.Parameters.Sort);
-            return await BypassCacheAsync(filter, cancellationToken, null);
-        }
-
-        var metadataKey = new MediaQueryMetadataKey(
-            filter.MediaType,
-            libraryIds,
-            filter.FilterOfflineMedia,
-            filter.FilterOwnedMedia);
-
-        var sortedListKey = new MediaQuerySortedListKey(metadataKey, sort.Field);
-
-        if (_metadataSnapshots.TryGetValue(metadataKey, out var metadataSnapshot)
-            && _sortedListSnapshots.TryGetValue(sortedListKey, out var sortedListSnapshot))
-        {
-            if (_dirtyKeys.ContainsKey(sortedListKey))
-                QueueSnapshotRefresh(sortedListKey);
-
-            _log.Here().Debug("Media query cache hit for {MediaType} sorted by {SortField}", filter.MediaType, sortedListKey.NormalizedAscendingSortField);
-            return Result.Ok(CreatePage(filter, metadataSnapshot, sortedListSnapshot, sort.Descending));
-        }
-
-        _log.Here().Debug("Media query cache miss for {MediaType} sorted by {SortField}", filter.MediaType, sortedListKey.NormalizedAscendingSortField);
-        QueueSnapshotRefresh(sortedListKey);
-        return Result.Fail(CACHE_WARMING_UP_MESSAGE).Add503ServiceUnavailableError();
+        // V8.3.5 FULL-LIBRARY SNAPSHOT CACHE DISABLED
+        //
+        // The previous cache retained complete Movie/TV DTO collections for each
+        // warmup sort field. With seven sort fields across Movie and TvShow, one
+        // process could keep many full-library copies rooted in Gen2.
+        //
+        // SQL Media Index now performs filtering/sorting/paging in the database,
+        // so use that bounded path directly instead of retaining full-library
+        // sorted snapshots in managed memory.
+        return await BypassCacheAsync(
+            filter,
+            cancellationToken,
+            "V8.3.5 memory containment: full-library snapshot cache disabled"
+        );
     }
 
     /// <inheritdoc />
     public async Task BuildCache()
     {
-        // Resolve library IDs once for Movie and TvShow warmup keys
-        var movieLibraryIds = await ResolveLibraryIdsAsync(CreateWarmupFilter(PlexMediaType.Movie, _warmupSortFields[0]), CancellationToken.None);
-        var tvShowLibraryIds = await ResolveLibraryIdsAsync(CreateWarmupFilter(PlexMediaType.TvShow, _warmupSortFields[0]), CancellationToken.None);
+        // V8.3.5: cache warmup is intentionally disabled. Clear all retained
+        // snapshot/build state so a warmup or post-sync rebuild cannot root
+        // full-library DTO graphs.
+        var metadataCount = _metadataSnapshots.Count;
+        var sortedListCount = _sortedListSnapshots.Count;
+        var buildCount = _builds.Count;
 
-        var warmupFilters = _warmupMediaTypes
-            .SelectMany(mediaType => _warmupSortFields
-                .Select(sortField =>
-                {
-                    var filter = CreateWarmupFilter(mediaType, sortField);
-                    var libraryIds = mediaType == PlexMediaType.Movie ? movieLibraryIds : tvShowLibraryIds;
-                    var normalizedSort = MediaSortNormalizer.Normalize(filter.Parameters.Sort, libraryIds.Count)!;
-                    var key = new MediaQuerySortedListKey(
-                        new MediaQueryMetadataKey(mediaType, libraryIds, filter.FilterOfflineMedia, filter.FilterOwnedMedia),
-                        normalizedSort.Field);
-                    return (Filter: filter, Key: key);
-                }))
-            .ToList();
+        _metadataSnapshots.Clear();
+        _sortedListSnapshots.Clear();
+        _builds.Clear();
+        _buildVersions.Clear();
+        _dirtyKeys.Clear();
 
-        var tasks = warmupFilters.Select(x => BuildAndStoreSnapshotAsync(x.Filter, x.Key, CancellationToken.None)).ToList();
-        var results = await Task.WhenAll(tasks);
-        var failures = results.Where(x => x.IsFailed).SelectMany(x => x.Errors).ToList();
-        if (failures.Count > 0)
-        {
-            _log.Here().Warning("Media query cache warmup completed with {FailureCount} failed snapshot builds", failures.Count);
-            return;
-        }
+        _log.Here().Information(
+            "V8.3.5 MediaQueryCache containment active: full-library snapshot warmup disabled. "
+                + "Cleared {MetadataCount} metadata snapshots, {SortedListCount} sorted snapshots, "
+                + "and {BuildCount} build entries. Media overview requests will use SQL paging.",
+            metadataCount,
+            sortedListCount,
+            buildCount
+        );
 
-        _log.Here().Information("Media query cache warmup completed with {SnapshotCount} all-library sorted snapshots", results.Length);
+        await Task.CompletedTask;
     }
 
     /// <inheritdoc />
     public void InvalidateLibrary(int plexLibraryId, string reason) => InvalidateLibraries([plexLibraryId], reason);
 
     /// <inheritdoc />
-    public void InvalidateLibraries(IReadOnlyCollection<int> plexLibraryIds, string reason)
+    public void InvalidateLibraries(
+        IReadOnlyCollection<int> plexLibraryIds,
+        string reason)
     {
+        // V8.3.5: there are no long-lived media snapshots to invalidate or
+        // rebuild. Keep this API as a no-op so callers do not need to change.
         if (SuppressInvalidation)
         {
-            _log.Here().Debug("Skipping media query cache invalidation for libraries {PlexLibraryIds}: suppression active. Reason: {Reason}", plexLibraryIds, reason);
+            _log.Here().Debug(
+                "Skipping MediaQueryCache invalidation for libraries {PlexLibraryIds}: "
+                    + "suppression active. Reason: {Reason}",
+                plexLibraryIds,
+                reason
+            );
             return;
         }
-        var affectedLibraryIds = plexLibraryIds.Where(x => x > 0).ToHashSet();
-        if (affectedLibraryIds.Count == 0)
-            return;
 
-        var dirtyMetadataCount = MarkKeysContainingLibraryAsDirty(_metadataSnapshots, k => k.ContainsAnyLibrary(affectedLibraryIds));
-        var dirtySortedListCount = MarkKeysContainingLibraryAsDirty(_sortedListSnapshots, k => k.ContainsAnyLibrary(affectedLibraryIds));
-        var inFlightCount = CountKeysContainingLibrary(_builds, k => k.ContainsAnyLibrary(affectedLibraryIds));
-
-        _log.Here().Information(
-            "Invalidated media query cache for libraries {PlexLibraryIds}: {Reason}. " +
-            "Marked {MetadataCount} metadata, {SortedListCount} sorted-lists as dirty, {InFlightCount} in-flight builds.",
-            affectedLibraryIds, reason, dirtyMetadataCount, dirtySortedListCount, inFlightCount);
+        _log.Here().Debug(
+            "Ignoring MediaQueryCache invalidation for libraries {PlexLibraryIds}: "
+                + "V8.3.5 full-library snapshot cache is disabled. Reason: {Reason}",
+            plexLibraryIds,
+            reason
+        );
     }
 
     // ── Background refresh helpers ────────────────────────────────
