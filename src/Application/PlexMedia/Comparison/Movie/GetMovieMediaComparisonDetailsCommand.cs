@@ -185,12 +185,23 @@ public class GetMovieMediaComparisonDetailsCommandHandler
     }
 
 
-    private static VideoQuality GetCurrentBestQuality(PlexMovie movie) =>
-        movie.MediaDataList
-            .Select(x => x.Quality)
-            .Append(movie.Quality)
+    private static VideoQuality GetCurrentBestQuality(PlexMovie movie)
+    {
+        // V8.3.5.2 CURRENT VIDEO RESOLUTION
+        //
+        // Use the actual current media version resolution. The previous
+        // V8.3.5.1 helper read MediaDataList.Quality, which can disagree with
+        // the normalized file resolution displayed by the library view.
+        var currentResolution = movie.MediaDataList
+            .Select(x => x.VideoResolution)
+            .Where(x => x is not VideoQuality.None and not VideoQuality.Unknown)
             .OrderByDescending(x => (int)x)
-            .First();
+            .FirstOrDefault();
+
+        return currentResolution is VideoQuality.None or VideoQuality.Unknown
+            ? movie.Quality
+            : currentResolution;
+    }
 
     private static string FirstFileNameOrEmpty(PlexMovie? movie) =>
         movie?.MediaDataList.Select(x => x.GetFileName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;

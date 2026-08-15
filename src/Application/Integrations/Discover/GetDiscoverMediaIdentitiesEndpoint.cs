@@ -407,11 +407,20 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
 
     private static VideoQuality GetCurrentBestMovieQuality(PlexMovie movie)
     {
-        return movie.MediaDataList
-            .Select(x => x.Quality)
-            .Append(movie.Quality)
+        // V8.3.5.2 CURRENT VIDEO RESOLUTION
+        //
+        // BasePlexMediaData.Quality is not the authoritative field for the
+        // actual file resolution. VideoResolution is normalized from Plex's
+        // video height and is what the media/library UI uses for 1080p/2160p.
+        var currentResolution = movie.MediaDataList
+            .Select(x => x.VideoResolution)
+            .Where(x => x is not VideoQuality.None and not VideoQuality.Unknown)
             .OrderByDescending(x => (int)x)
-            .First();
+            .FirstOrDefault();
+
+        return currentResolution is VideoQuality.None or VideoQuality.Unknown
+            ? movie.Quality
+            : currentResolution;
     }
 
     private static bool IsCanonicalOwnedMatch(
