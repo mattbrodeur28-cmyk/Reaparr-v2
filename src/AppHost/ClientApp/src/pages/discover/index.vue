@@ -692,6 +692,71 @@ const applyWantedOnly = computed(() =>
 	&& discoverStore.arrDataAvailable,
 );
 
+function getDiscoverActionStates(
+	comparisonState: PlexMediaComparisonState,
+): PlexMediaComparisonState[] {
+	switch (comparisonState) {
+		case PlexMediaComparisonState.HigherQuality:
+			return [
+				PlexMediaComparisonState.HigherQuality,
+				PlexMediaComparisonState.PartialAndHigherQuality,
+			];
+		case PlexMediaComparisonState.PartialAndHigherQuality:
+			return [
+				PlexMediaComparisonState.PartialAndHigherQuality,
+				PlexMediaComparisonState.HigherQuality,
+				PlexMediaComparisonState.Partial,
+			];
+		case PlexMediaComparisonState.Partial:
+			return [
+				PlexMediaComparisonState.Partial,
+				PlexMediaComparisonState.PartialAndHigherQuality,
+			];
+		case PlexMediaComparisonState.Missing:
+			return [PlexMediaComparisonState.Missing];
+		default:
+			return [comparisonState];
+	}
+}
+
+function selectDiscoverActionableSource(
+	item: IDiscoverItem,
+	requestedQualities: VideoQuality[] = [],
+	requireOnline = true,
+) {
+	const comparisonState = discoverStore.getAggregateState(item.sources);
+	const exactSources = item.sources.filter(
+		(source) => source.comparisonState === comparisonState,
+	);
+	const exact = discoverStore.selectBestSource(
+		{ ...item, sources: exactSources },
+		requestedQualities,
+		requireOnline,
+	);
+	if (exact) {
+		return exact;
+	}
+
+	const compatibleStates = getDiscoverActionStates(comparisonState);
+	const compatibleSources = item.sources.filter((source) =>
+		compatibleStates.includes(source.comparisonState),
+	);
+	const compatible = discoverStore.selectBestSource(
+		{ ...item, sources: compatibleSources },
+		requestedQualities,
+		requireOnline,
+	);
+	if (compatible) {
+		return compatible;
+	}
+
+	return discoverStore.selectBestSource(
+		item,
+		requestedQualities,
+		requireOnline,
+	);
+}
+
 const filteredItems = computed(() => {
 	const query = get(search).trim().toLocaleLowerCase();
 	const typeFilter = get(mediaTypeFilter);
@@ -706,21 +771,24 @@ const filteredItems = computed(() => {
 			return [];
 		}
 
-		const bestSource = discoverStore.selectBestSource(
-			{ ...item, sources: onlineSources },
+		const comparisonState = discoverStore.getAggregateState(onlineSources);
+		const actionableItem: IDiscoverItem = {
+			...item,
+			sources: onlineSources,
+			comparisonState,
+		};
+		const bestSource = selectDiscoverActionableSource(
+			actionableItem,
 			[],
 			true,
 		);
-
 		if (!bestSource) {
 			return [];
 		}
 
 		const liveItem: IDiscoverItem = {
-			...item,
+			...actionableItem,
 			media: bestSource.media,
-			sources: onlineSources,
-			comparisonState: discoverStore.getAggregateState(onlineSources),
 		};
 
 		if (get(applyWantedOnly) && !upgradeStates.includes(liveItem.comparisonState) && !liveItem.wantedByArr) {
@@ -1030,7 +1098,7 @@ function handleDownload(command: DownloadMediaDTO[], item: IDiscoverItem) {
 		...new Set(command.flatMap((download) => download.qualities.map((quality) => quality.quality))),
 	];
 
-	const bestSource = discoverStore.selectBestSource(item, requestedQualities, true);
+	const bestSource = selectDiscoverActionableSource(item, requestedQualities, true);
 	if (!bestSource) {
 		$q.notify({
 			type: 'warning',
@@ -1280,7 +1348,7 @@ function openTvSeriesDetailsFromDialog(): void {
 }
 
 function openTvSeriesDetails(item: IDiscoverItem) {
-	const bestSource = discoverStore.selectBestSource(item, [], true);
+	const bestSource = selectDiscoverActionableSource(item, [], true);
 	if (!bestSource) {
 		$q.notify({
 			type: 'warning',
