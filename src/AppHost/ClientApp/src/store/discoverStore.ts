@@ -30,6 +30,7 @@ export interface IDiscoverMediaIdentity {
 	imdbId?: string | null;
 	tmdbEnriched: boolean;
 	ownedInPlex?: boolean;
+	ownedBestQuality?: VideoQuality;
 	remoteEpisodeCount?: number;
 	ownedEpisodeCount?: number;
 	missingEpisodeCount?: number;
@@ -149,7 +150,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v83';
+const DISCOVER_CACHE_KEY = 'discover-feed-v8351';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
@@ -642,10 +643,37 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 
 		return [...groups.values()].flatMap((group) => {
 			const usefulSources = group.sources
-				.filter((source) => !(
-					source.comparisonState === PlexMediaComparisonState.Missing
-					&& source.identity?.ownedCoverageComplete === true
-				))
+				.filter((source) => {
+					if (
+						source.comparisonState === PlexMediaComparisonState.Missing
+						&& source.identity?.ownedCoverageComplete === true
+					) {
+						return false;
+					}
+
+					// V8.3.5.1: comparison hits can outlive a completed movie
+					// upgrade. Verify the persisted HigherQuality state against
+					// the quality of the movie that is owned right now.
+					if (
+						source.media.type === PlexMediaType.Movie
+						&& source.identity?.ownedCoverageComplete === true
+						&& (
+							source.comparisonState === PlexMediaComparisonState.HigherQuality
+							|| source.comparisonState === PlexMediaComparisonState.PartialAndHigherQuality
+						)
+					) {
+						const ownedQuality = source.identity.ownedBestQuality;
+						if (ownedQuality !== undefined && ownedQuality !== null) {
+							const ownedRank = QUALITY_RANK[ownedQuality] ?? 0;
+							const remoteRank = QUALITY_RANK[getBestQuality(source.media)] ?? 0;
+							if (ownedRank > 0 && remoteRank > 0 && ownedRank >= remoteRank) {
+								return false;
+							}
+						}
+					}
+
+					return true;
+				})
 				.map((source): IDiscoverSource => {
 					if (
 						source.comparisonState === PlexMediaComparisonState.Missing

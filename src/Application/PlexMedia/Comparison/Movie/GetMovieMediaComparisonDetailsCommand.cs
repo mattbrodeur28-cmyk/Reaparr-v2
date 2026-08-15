@@ -69,7 +69,7 @@ public class GetMovieMediaComparisonDetailsCommandHandler
                     type: PlexMediaType.Movie,
                     title: movie.Title,
                     state: PlexMediaComparisonState.Missing,
-                    remoteQuality: movie.Quality,
+                    remoteQuality: GetCurrentBestQuality(movie),
                     ownedQuality: VideoQuality.None,
                     remoteLocation: FirstFileNameOrEmpty(movie),
                     ownedLocation: string.Empty,
@@ -85,38 +85,48 @@ public class GetMovieMediaComparisonDetailsCommandHandler
         List<PlexMovieComparison> hits,
         CancellationToken ct)
     {
+        // V8.3.5.1 CURRENT COMPARISON QUALITY
         var upgradeHits = hits.Where(x => x.HitState == PlexMediaComparisonHitState.HigherQuality).ToList();
         if (upgradeHits.Count == 0)
             return [];
 
         var ownedMovieIds = upgradeHits.Select(x => x.OwnedPlexMediaId).ToHashSet();
         var ownedMovies = await _dbContext.PlexMovies
+            .AsNoTracking()
             .Include(x => x.MediaDataList)
             .Where(x => ownedMovieIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, ct);
 
         var remoteServerIds = await GetPlexServerIdsByLibraryIdAsync(upgradeHits.Select(x => x.RemotePlexLibraryId), ct);
+        var remoteQuality = GetCurrentBestQuality(movie);
+        var rows = new List<ComparisonDetailsRow>();
 
-        return upgradeHits
-            .Select(hit =>
-            {
-                ownedMovies.TryGetValue(hit.OwnedPlexMediaId, out var ownedMovie);
-                return PlexMediaComparisonDetailsMapper.ToComparisonDetailsRow(
-                    rowId: ++_rowId,
-                    parentRowId: null,
-                    level: 0,
-                    plexMediaId: movie.Id,
-                    type: PlexMediaType.Movie,
-                    title: movie.Title,
-                    state: PlexMediaComparisonState.HigherQuality,
-                    remoteQuality: hit.RemoteQuality,
-                    ownedQuality: hit.OwnedQuality,
-                    remoteLocation: FirstFileNameOrEmpty(movie),
-                    ownedLocation: FirstFileNameOrEmpty(ownedMovie),
-                    remotePlexLibraryId: hit.RemotePlexLibraryId,
-                    remotePlexServerId: remoteServerIds.GetValueOrDefault(hit.RemotePlexLibraryId));
-            })
-            .ToList();
+        foreach (var hit in upgradeHits)
+        {
+            if (!ownedMovies.TryGetValue(hit.OwnedPlexMediaId, out var ownedMovie))
+                continue;
+
+            var ownedQuality = GetCurrentBestQuality(ownedMovie);
+            if ((int)remoteQuality <= (int)ownedQuality)
+                continue;
+
+            rows.Add(PlexMediaComparisonDetailsMapper.ToComparisonDetailsRow(
+                rowId: ++_rowId,
+                parentRowId: null,
+                level: 0,
+                plexMediaId: movie.Id,
+                type: PlexMediaType.Movie,
+                title: movie.Title,
+                state: PlexMediaComparisonState.HigherQuality,
+                remoteQuality: remoteQuality,
+                ownedQuality: ownedQuality,
+                remoteLocation: FirstFileNameOrEmpty(movie),
+                ownedLocation: FirstFileNameOrEmpty(ownedMovie),
+                remotePlexLibraryId: hit.RemotePlexLibraryId,
+                remotePlexServerId: remoteServerIds.GetValueOrDefault(hit.RemotePlexLibraryId)));
+        }
+
+        return rows;
     }
 
     private async Task<List<ComparisonDetailsRow>> GetOwnedMovieRowsAsync(PlexMovie movie, CancellationToken ct)
@@ -138,32 +148,49 @@ public class GetMovieMediaComparisonDetailsCommandHandler
 
         var remoteMovieIds = upgradeHits.Select(x => x.RemotePlexMediaId).ToHashSet();
         var remoteMovies = await _dbContext.PlexMovies
+            .AsNoTracking()
             .Include(x => x.MediaDataList)
             .Where(x => remoteMovieIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, ct);
         var remoteServerIds = await GetPlexServerIdsByLibraryIdAsync(upgradeHits.Select(x => x.RemotePlexLibraryId), ct);
+        var ownedQuality = GetCurrentBestQuality(movie);
+        var rows = new List<ComparisonDetailsRow>();
 
-        return upgradeHits
-            .Select(hit =>
-            {
-                remoteMovies.TryGetValue(hit.RemotePlexMediaId, out var remoteMovie);
-                return PlexMediaComparisonDetailsMapper.ToComparisonDetailsRow(
-                    rowId: ++_rowId,
-                    parentRowId: null,
-                    level: 0,
-                    plexMediaId: remoteMovie?.Id ?? hit.RemotePlexMediaId,
-                    type: PlexMediaType.Movie,
-                    title: remoteMovie?.Title ?? movie.Title,
-                    state: PlexMediaComparisonState.HigherQuality,
-                    remoteQuality: hit.RemoteQuality,
-                    ownedQuality: hit.OwnedQuality,
-                    remoteLocation: FirstFileNameOrEmpty(remoteMovie),
-                    ownedLocation: FirstFileNameOrEmpty(movie),
-                    remotePlexLibraryId: hit.RemotePlexLibraryId,
-                    remotePlexServerId: remoteServerIds.GetValueOrDefault(hit.RemotePlexLibraryId));
-            })
-            .ToList();
+        foreach (var hit in upgradeHits)
+        {
+            if (!remoteMovies.TryGetValue(hit.RemotePlexMediaId, out var remoteMovie))
+                continue;
+
+            var remoteQuality = GetCurrentBestQuality(remoteMovie);
+            if ((int)remoteQuality <= (int)ownedQuality)
+                continue;
+
+            rows.Add(PlexMediaComparisonDetailsMapper.ToComparisonDetailsRow(
+                rowId: ++_rowId,
+                parentRowId: null,
+                level: 0,
+                plexMediaId: remoteMovie.Id,
+                type: PlexMediaType.Movie,
+                title: remoteMovie.Title,
+                state: PlexMediaComparisonState.HigherQuality,
+                remoteQuality: remoteQuality,
+                ownedQuality: ownedQuality,
+                remoteLocation: FirstFileNameOrEmpty(remoteMovie),
+                ownedLocation: FirstFileNameOrEmpty(movie),
+                remotePlexLibraryId: hit.RemotePlexLibraryId,
+                remotePlexServerId: remoteServerIds.GetValueOrDefault(hit.RemotePlexLibraryId)));
+        }
+
+        return rows;
     }
+
+
+    private static VideoQuality GetCurrentBestQuality(PlexMovie movie) =>
+        movie.MediaDataList
+            .Select(x => x.Quality)
+            .Append(movie.Quality)
+            .OrderByDescending(x => (int)x)
+            .First();
 
     private static string FirstFileNameOrEmpty(PlexMovie? movie) =>
         movie?.MediaDataList.Select(x => x.GetFileName).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;

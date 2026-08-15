@@ -28,6 +28,8 @@ public sealed class DiscoverMediaIdentityDTO
     public string? ImdbId { get; init; }
     public bool TmdbEnriched { get; set; }
     public bool OwnedInPlex { get; set; }
+    // V8.3.5.1 CURRENT OWNED MOVIE QUALITY
+    public VideoQuality OwnedBestQuality { get; set; } = VideoQuality.None;
     public int RemoteEpisodeCount { get; set; }
     public int OwnedEpisodeCount { get; set; }
     public int MissingEpisodeCount { get; set; }
@@ -244,6 +246,7 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             })
             .ToListAsync(ct);
 
+        var ownedMovieMatches = new Dictionary<int, List<int>>();
         var ownedTvShowMatches = new Dictionary<int, List<int>>();
 
         foreach (var identity in identities)
@@ -261,6 +264,13 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             if (identity.MediaType == PlexMediaType.Movie)
             {
                 identity.OwnedCoverageComplete = identity.OwnedInPlex;
+                if (matchingOwned.Count > 0)
+                {
+                    ownedMovieMatches[identity.MediaId] = matchingOwned
+                        .Select(x => x.MediaId)
+                        .Distinct()
+                        .ToList();
+                }
                 continue;
             }
 
@@ -270,6 +280,47 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
                     .Select(x => x.MediaId)
                     .Distinct()
                     .ToList();
+            }
+        }
+
+
+        // V8.3.5.1: resolve quality from the current owned PlexMovie rows rather
+        // than trusting the quality captured by an older comparison hit. The
+        // query is bounded to only canonical movie matches requested by Discover.
+        var ownedMovieIds = ownedMovieMatches
+            .Values
+            .SelectMany(x => x)
+            .Distinct()
+            .ToArray();
+
+        if (ownedMovieIds.Length > 0)
+        {
+            var currentOwnedMovieQualities = new Dictionary<int, VideoQuality>();
+
+            foreach (var chunk in ownedMovieIds.Chunk(QueryChunkSize))
+            {
+                var ownedMovieRows = await _dbContext
+                    .PlexMovies.AsNoTracking()
+                    .Include(x => x.MediaDataList)
+                    .Where(x => chunk.Contains(x.Id))
+                    .ToListAsync(ct);
+
+                foreach (var ownedMovie in ownedMovieRows)
+                {
+                    currentOwnedMovieQualities[ownedMovie.Id] = GetCurrentBestMovieQuality(ownedMovie);
+                }
+            }
+
+            foreach (var identityItem in identities.Where(x => x.MediaType == PlexMediaType.Movie))
+            {
+                if (!ownedMovieMatches.TryGetValue(identityItem.MediaId, out var ownedMatches))
+                    continue;
+
+                identityItem.OwnedBestQuality = ownedMatches
+                    .Where(currentOwnedMovieQualities.ContainsKey)
+                    .Select(x => currentOwnedMovieQualities[x])
+                    .OrderByDescending(x => (int)x)
+                    .FirstOrDefault();
             }
         }
 
@@ -351,6 +402,16 @@ await MarkOwnedPlexMatchesAsync(identities, ct);
             identityItem.OwnedCoveragePartial =
                 ownedRemoteEpisodes > 0 && missingEpisodes > 0;
         }
+    }
+
+
+    private static VideoQuality GetCurrentBestMovieQuality(PlexMovie movie)
+    {
+        return movie.MediaDataList
+            .Select(x => x.Quality)
+            .Append(movie.Quality)
+            .OrderByDescending(x => (int)x)
+            .First();
     }
 
     private static bool IsCanonicalOwnedMatch(
