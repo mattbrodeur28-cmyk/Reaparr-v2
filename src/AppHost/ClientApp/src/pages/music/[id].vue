@@ -19,6 +19,12 @@
 			<QLoading v-if="loading" />
 
 			<QAlert
+				v-else-if="error"
+				type="error">
+				{{ error }}
+			</QAlert>
+
+			<QAlert
 				v-else-if="!library || library.artistCount === 0"
 				type="info">
 				{{ $t('pages.music.music-id.empty') }}
@@ -112,13 +118,21 @@ const libraryId = +(route.params.id as string);
 const library = ref<MusicLibraryDTO | null>(null);
 const loading = ref(true);
 const loadingArtistId = ref<number | null>(null);
+const error = ref<string | null>(null);
 
 plexMediaApi.getMusicLibraryEndpoint({ plexLibraryId: libraryId }).subscribe({
 	next: (result) => {
-		library.value = result.value ?? null;
+		if (result.value) {
+			library.value = result.value;
+		} else {
+			// A successful call with no payload means the request was rejected or the
+			// library id does not exist. Surface it rather than showing an empty library.
+			error.value = result.errors?.[0]?.message ?? 'Could not load this music library.';
+		}
 		loading.value = false;
 	},
-	error: () => {
+	error: (err: Error) => {
+		error.value = err.message;
 		loading.value = false;
 	},
 });

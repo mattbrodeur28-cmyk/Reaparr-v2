@@ -61,6 +61,33 @@ public class LibrarySyncProgressStore : ILibrarySyncProgressStore
                 },
             ];
         }
+        else if (type == PlexMediaType.Artist)
+        {
+            items =
+            [
+                new LibraryProgressItem
+                {
+                    MediaType = PlexMediaType.Artist,
+                    Received = 0,
+                    Total = 0,
+                    TimeRemaining = TimeSpan.Zero,
+                },
+                new LibraryProgressItem
+                {
+                    MediaType = PlexMediaType.Album,
+                    Received = 0,
+                    Total = 0,
+                    TimeRemaining = TimeSpan.Zero,
+                },
+                new LibraryProgressItem
+                {
+                    MediaType = PlexMediaType.Song,
+                    Received = 0,
+                    Total = 0,
+                    TimeRemaining = TimeSpan.Zero,
+                },
+            ];
+        }
         else
         {
             _log.Here()

@@ -133,15 +133,20 @@ public class GetMusicLibraryEndpoint : Endpoint<GetMusicLibraryRequest, MusicLib
                 artist.Albums = albums;
         }
 
-        await Send.OkAsync(
-            new MusicLibraryDTO
-            {
-                PlexLibraryId = req.PlexLibraryId,
-                ArtistCount = artists.Count,
-                TrackCount = artists.Sum(x => x.TrackCount),
-                MediaSize = artists.Sum(x => x.MediaSize),
-                Artists = artists,
-            },
+        // Send.FluentResult wraps the payload in ResultDTO<T>, which is what the generated
+        // TypeScript client unwraps via apiCheckPipe. Send.OkAsync would return the DTO bare
+        // and the client would read `value` as undefined.
+        await Send.FluentResult(
+            Result.Ok(
+                new MusicLibraryDTO
+                {
+                    PlexLibraryId = req.PlexLibraryId,
+                    ArtistCount = artists.Count,
+                    TrackCount = artists.Sum(x => x.TrackCount),
+                    MediaSize = artists.Sum(x => x.MediaSize),
+                    Artists = artists,
+                }
+            ),
             ct
         );
     }

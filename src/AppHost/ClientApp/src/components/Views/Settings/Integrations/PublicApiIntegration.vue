@@ -1,8 +1,7 @@
 <template>
 	<QSection>
 		<QAlert type="info">
-			These credentials authenticate external clients such as SoulSync, Prowlarr or a manual
-			Torznab indexer entry. Reaparr generates them automatically on first start.
+			{{ $t('components.public-api-integration.description') }}
 		</QAlert>
 
 		<HelpRow

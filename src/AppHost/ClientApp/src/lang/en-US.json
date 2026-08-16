@@ -463,6 +463,7 @@
 		},
 		"public-api-integration": {
 			"title": "Public API & Credentials",
+			"description": "These credentials authenticate external clients such as SoulSync, Prowlarr or a manual Torznab indexer entry. Reaparr generates them automatically on first start.",
 			"copy": "Copy to clipboard",
 			"reveal": "Toggle password visibility"
 		}
