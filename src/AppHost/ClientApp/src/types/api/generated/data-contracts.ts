@@ -50,6 +50,16 @@ export interface AppUserLoginEndpointRequest {
   username: string;
 }
 
+export enum AudioQuality {
+  Unknown = "Unknown",
+  LossyLow = "Lossy_Low",
+  LossyStandard = "Lossy_Standard",
+  LossyHigh = "Lossy_High",
+  Lossless = "Lossless",
+  LosslessHiRes = "Lossless_HiRes",
+  None = "None",
+}
+
 export interface BaseResultDTO {
   errors: ErrorDTO[];
   isSuccess: boolean;
@@ -935,6 +945,70 @@ export interface MoveDownloadFileJobUpdateDTO {
   id: DownloadTaskKey;
 }
 
+export interface MusicAlbumDTO {
+  /** @format int32 */
+  id: number;
+  /** @format int64 */
+  mediaSize: number;
+  title: string;
+  /** @format int32 */
+  trackCount: number;
+  tracks: MusicTrackDTO[];
+  /** @format int32 */
+  year: number;
+}
+
+export interface MusicArtistDTO {
+  /** @format int32 */
+  albumCount: number;
+  albums: MusicAlbumDTO[];
+  hasThumb: boolean;
+  /** @format int32 */
+  id: number;
+  /** @format int64 */
+  mediaSize: number;
+  thumbUrl: string;
+  title: string;
+  /** @format int32 */
+  trackCount: number;
+  /** @format int32 */
+  year: number;
+}
+
+export interface MusicLibraryDTO {
+  /** @format int32 */
+  artistCount: number;
+  artists: MusicArtistDTO[];
+  /** @format int64 */
+  mediaSize: number;
+  /** @format int32 */
+  plexLibraryId: number;
+  /** @format int32 */
+  trackCount: number;
+}
+
+export interface MusicTrackDTO {
+  audioQuality: AudioQuality;
+  /** @format int32 */
+  bitDepth?: number | null;
+  /** @format int32 */
+  bitrate?: number | null;
+  /** @format int32 */
+  discNumber: number;
+  /** @format int32 */
+  duration: number;
+  format?: string | null;
+  /** @format int32 */
+  id: number;
+  /** @format int64 */
+  mediaSize: number;
+  /** @format int32 */
+  sampleRate?: number | null;
+  title: string;
+  /** @format int32 */
+  trackNumber: number;
+}
+
 export interface NetworkSettingsDTO {
   allowedProxyIps: string[];
   basePath: string;
@@ -1693,6 +1767,15 @@ export interface ResultDTOOfListOfString {
   statusCode: number;
   successes: SuccessDTO[];
   value?: string[] | null;
+}
+
+export interface ResultDTOOfMusicLibraryDTO {
+  errors: ErrorDTO[];
+  isSuccess: boolean;
+  /** @format int32 */
+  statusCode: number;
+  successes: SuccessDTO[];
+  value?: MusicLibraryDTO | null;
 }
 
 export interface ResultDTOOfPlexAccountDTO {

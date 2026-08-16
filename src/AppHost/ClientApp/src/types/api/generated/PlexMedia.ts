@@ -13,6 +13,7 @@
 import type { RequestParams } from "./http-client";
 
 import type {
+  MusicLibraryDTO,
   PlexMediaComparisonDetailsDTO,
   PlexMediaComparisonState,
   PlexMediaDTO,
@@ -114,6 +115,31 @@ export class PlexMedia {
     }).pipe(apiCheckPipe<PlexMediaDTO>);
 
   /**
+   * No description
+   * * @tags Plexmedia
+   * @name GetMusicLibraryEndpoint
+   * @request GET:/api/PlexMedia/music
+   * @secure
+   */
+  getMusicLibraryEndpoint = (
+    query: {
+      /** @format int32 */
+      artistId?: number | null;
+      /** @format int32 */
+      plexLibraryId: number;
+    },
+    params: RequestParams = {},
+  ) =>
+    axiosObservable<MusicLibraryDTO>({
+      url: `/api/PlexMedia/music`,
+      method: "GET",
+      params: query,
+      secure: true,
+      responseType: "json",
+      ...params,
+    }).pipe(apiCheckPipe<MusicLibraryDTO>);
+
+  /**
    * @description Proxies image bytes from Plex servers with CORS headers.
    * * @tags Plexmedia
    * @name GetPlexMediaThumbnailImageEndpoint
@@ -208,6 +234,13 @@ export class PlexMediaPaths {
       url: `/api/PlexMedia/detail/${plexMediaId}`,
       query,
     });
+
+  static getMusicLibraryEndpoint = (query: {
+    /** @format int32 */
+    artistId?: number | null;
+    /** @format int32 */
+    plexLibraryId: number;
+  }) => queryString.stringifyUrl({ url: `/api/PlexMedia/music`, query });
 
   static getPlexMediaThumbnailImageEndpoint = (query: {
     /**
