@@ -174,7 +174,15 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
         if (response.IsFailed)
             return response.ToResult();
 
-        var rawValue = response.Value?.MediaContainerWithMetadata?.MediaContainer?.TotalSize ?? 0;
+        var mediaContainer = response.Value?.MediaContainerWithMetadata?.MediaContainer;
+
+        // Plex does not always return totalSize. Music (artist) sections answer with only a
+        // "size" attribute, so relying on totalSize alone reports an empty library and the sync
+        // silently stops before fetching anything. Fall back to size when totalSize is absent.
+        var rawValue = mediaContainer?.TotalSize ?? 0;
+        if (rawValue <= 0)
+            rawValue = mediaContainer?.Size ?? 0;
+
         var safeValue = (int)Math.Max(0, Math.Min(rawValue, int.MaxValue));
         return Result.Ok(safeValue);
     }
