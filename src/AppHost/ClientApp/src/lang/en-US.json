@@ -460,6 +460,11 @@
 				}
 			},
 			"title": "Radarr Integration"
+		},
+		"public-api-integration": {
+			"title": "Public API & Credentials",
+			"copy": "Copy to clipboard",
+			"reveal": "Toggle password visibility"
 		}
 	},
 	"general": {

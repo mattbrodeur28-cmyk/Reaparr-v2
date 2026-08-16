@@ -16,6 +16,18 @@
 		</section>
 
 		<section class="v7-settings-stack">
+			<q-expansion-item
+				v-model="publicApiExpanded"
+				class="v77-integration-expansion"
+				header-class="v77-integration-expansion__header"
+				icon="mdi-key-variant"
+				:label="$t('components.public-api-integration.title')"
+				caption="API key and credentials for SoulSync, Prowlarr and Torznab clients">
+				<div class="v77-integration-expansion__content">
+					<PublicApiIntegration />
+				</div>
+			</q-expansion-item>
+
 			<SonarrIntegration />
 
 			<q-expansion-item
@@ -58,6 +70,11 @@ const radarrExpanded = useLocalStorage<boolean>(
 
 const tmdbExpanded = useLocalStorage<boolean>(
 	'reaparr-settings-tmdb-expanded',
+	false,
+);
+
+const publicApiExpanded = useLocalStorage<boolean>(
+	'reaparr-settings-public-api-expanded',
 	false,
 );
 </script>
