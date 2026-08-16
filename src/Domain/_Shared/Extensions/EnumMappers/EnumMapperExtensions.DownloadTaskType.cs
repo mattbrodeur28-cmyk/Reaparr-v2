@@ -15,6 +15,10 @@ public static partial class EnumMapperExtensions
         ["Episode"] = DownloadTaskType.Episode,
         ["EpisodeData"] = DownloadTaskType.EpisodeData,
         ["EpisodePart"] = DownloadTaskType.EpisodePart,
+        ["MusicArtist"] = DownloadTaskType.MusicArtist,
+        ["MusicAlbum"] = DownloadTaskType.MusicAlbum,
+        ["MusicTrack"] = DownloadTaskType.MusicTrack,
+        ["MusicTrackData"] = DownloadTaskType.MusicTrackData,
     };
 
     /// <summary>
@@ -56,6 +60,10 @@ public static partial class EnumMapperExtensions
             DownloadTaskType.Episode => "Episode",
             DownloadTaskType.EpisodeData => "EpisodeData",
             DownloadTaskType.EpisodePart => "EpisodePart",
+            DownloadTaskType.MusicArtist => "MusicArtist",
+            DownloadTaskType.MusicAlbum => "MusicAlbum",
+            DownloadTaskType.MusicTrack => "MusicTrack",
+            DownloadTaskType.MusicTrackData => "MusicTrackData",
             _ => DefaultException(),
         };
 
@@ -78,11 +86,15 @@ public static partial class EnumMapperExtensions
             or DownloadTaskType.TvShow
             or DownloadTaskType.Season
             or DownloadTaskType.Episode
+            or DownloadTaskType.MusicArtist
+            or DownloadTaskType.MusicAlbum
+            or DownloadTaskType.MusicTrack
             or DownloadTaskType.None => false,
             DownloadTaskType.MovieData
             or DownloadTaskType.MoviePart
             or DownloadTaskType.EpisodeData
-            or DownloadTaskType.EpisodePart => true,
+            or DownloadTaskType.EpisodePart
+            or DownloadTaskType.MusicTrackData => true,
             var _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
         };
 
@@ -95,6 +107,9 @@ public static partial class EnumMapperExtensions
             DownloadTaskType.Season => PlexMediaType.Season,
             DownloadTaskType.Episode or DownloadTaskType.EpisodeData or DownloadTaskType.EpisodePart =>
                 PlexMediaType.Episode,
+            DownloadTaskType.MusicArtist => PlexMediaType.Artist,
+            DownloadTaskType.MusicAlbum => PlexMediaType.Album,
+            DownloadTaskType.MusicTrack or DownloadTaskType.MusicTrackData => PlexMediaType.Song,
             DownloadTaskType.None => PlexMediaType.None,
             _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
         };

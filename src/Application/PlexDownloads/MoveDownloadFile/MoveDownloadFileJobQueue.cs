@@ -129,12 +129,28 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
                     IsDownloadFinished = x.DownloadStatus == DownloadStatus.DownloadFinished,
                 });
 
+            var musicCandidates = dbContext
+                .DownloadTaskMusicTrackFile.Where(x =>
+                    x.DownloadStatus == DownloadStatus.DownloadFinished
+                    || x.DownloadStatus == DownloadStatus.MoveError
+                )
+                .Select(x => new
+                {
+                    x.Id,
+                    x.PlexServerId,
+                    x.PlexLibraryId,
+                    Type = DownloadTaskType.MusicTrackData,
+                    x.CreatedAt,
+                    IsDownloadFinished = x.DownloadStatus == DownloadStatus.DownloadFinished,
+                });
+
             var blockedIds = runningIds
                 .Concat(_moveReservations.Keys)
                 .ToHashSet();
 
             var candidates = await movieCandidates
                 .Concat(episodeCandidates)
+                .Concat(musicCandidates)
                 .Where(x => !blockedIds.Contains(x.Id))
                 .ToListAsync();
 

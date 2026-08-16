@@ -46,6 +46,14 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
 
     public DbSet<PlexTvShowEpisodeMediaData> PlexTvShowEpisodeData { get; set; }
 
+    public DbSet<PlexMusicArtist> PlexMusicArtists { get; set; }
+
+    public DbSet<PlexMusicAlbum> PlexMusicAlbums { get; set; }
+
+    public DbSet<PlexMusicTrack> PlexMusicTracks { get; set; }
+
+    public DbSet<PlexMusicTrackMediaData> PlexMusicTrackData { get; set; }
+
     public DbSet<PlexServer> PlexServers { get; set; }
 
     public DbSet<PlexServerConnection> PlexServerConnections { get; set; }
@@ -71,6 +79,16 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
     public DbSet<DownloadTaskTvShowEpisodeFile> DownloadTaskTvShowEpisodeFile { get; set; }
 
     public DbSet<DownloadTaskTvShowEpisodeFileLog> DownloadTaskTvShowEpisodeFileLogs { get; set; }
+
+    public DbSet<DownloadTaskMusicArtist> DownloadTaskMusicArtist { get; set; }
+
+    public DbSet<DownloadTaskMusicAlbum> DownloadTaskMusicAlbum { get; set; }
+
+    public DbSet<DownloadTaskMusicTrack> DownloadTaskMusicTrack { get; set; }
+
+    public DbSet<DownloadTaskMusicTrackFile> DownloadTaskMusicTrackFile { get; set; }
+
+    public DbSet<DownloadTaskMusicTrackFileLog> DownloadTaskMusicTrackFileLogs { get; set; }
 
     public DbSet<PlexAccountServer> PlexAccountServers { get; set; }
 

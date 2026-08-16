@@ -56,7 +56,21 @@ public class DeleteDownloadTaskFilesCommandHandler : ICommandHandler<DeleteDownl
             .Where(x => episodeFileIds.Contains(x.Id))
             .ToListAsync(cancellationToken);
         var episodeFileTasks = await episodeFileTask;
-        var allFileTasks = movieFileTasks.Cast<DownloadTaskFileBase>().Concat(episodeFileTasks).ToList();
+
+        var musicFileIds = keys.Where(k => k.Type is DownloadTaskType.MusicTrackData)
+            .Select(k => k.Id)
+            .ToList();
+
+        var musicFileTasks = await _dbContext
+            .DownloadTaskMusicTrackFile.AsNoTracking()
+            .Where(x => musicFileIds.Contains(x.Id))
+            .ToListAsync(cancellationToken);
+
+        var allFileTasks = movieFileTasks
+            .Cast<DownloadTaskFileBase>()
+            .Concat(episodeFileTasks)
+            .Concat(musicFileTasks)
+            .ToList();
 
         foreach (var task in allFileTasks)
         {
@@ -87,6 +101,7 @@ public class DeleteDownloadTaskFilesCommandHandler : ICommandHandler<DeleteDownl
                     {
                         DownloadTaskType.MovieData => _path.Combine(downloadRoot, "Movies"),
                         DownloadTaskType.EpisodeData => _path.Combine(downloadRoot, "TvShows"),
+                        DownloadTaskType.MusicTrackData => _path.Combine(downloadRoot, "Music"),
                         _ => downloadRoot,
                     };
                 },

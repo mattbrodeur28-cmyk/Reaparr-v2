@@ -103,6 +103,24 @@ public class PlexLibrary : BaseEntity
     [Column(Order = 16)]
     public int EpisodeCount { get; init; }
 
+    /// <summary>
+    /// Gets the total <see cref="PlexMusicArtist"/> count.
+    /// </summary>
+    [Column(Order = 22)]
+    public int ArtistCount { get; init; }
+
+    /// <summary>
+    /// Gets the total <see cref="PlexMusicAlbum"/> count of all <see cref="PlexMusicArtist">PlexMusicArtists</see> in this library.
+    /// </summary>
+    [Column(Order = 23)]
+    public int AlbumCount { get; init; }
+
+    /// <summary>
+    /// Gets the total <see cref="PlexMusicTrack"/> count of all <see cref="PlexMusicArtist">PlexMusicArtists</see> in this library.
+    /// </summary>
+    [Column(Order = 24)]
+    public int TrackCount { get; init; }
+
     [Column(Order = 17)]
     public int ActorsCount { get; init; }
 
@@ -161,6 +179,8 @@ public class PlexLibrary : BaseEntity
     public ICollection<PlexMovie> Movies { get; private set; } = [];
 
     public ICollection<PlexTvShow> TvShows { get; private set; } = [];
+
+    public ICollection<PlexMusicArtist> MusicArtists { get; private set; } = [];
 
     public ICollection<PlexAccountLibrary> PlexAccountLibraries { get; private set; } = [];
 

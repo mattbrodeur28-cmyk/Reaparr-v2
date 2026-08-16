@@ -143,6 +143,7 @@ public class SearchMovieCommandHandler : ICommandHandler<SearchMovieCommand, Res
                 PartId = mediaData.Id, // TODO: Media and Parts are merged in the same DB table, PartId can be removed
                 PlexApiPartId = mediaData.PlexApiPartId,
                 Quality = mediaData.Quality,
+                AudioQuality = AudioQuality.None,
                 LibraryId = mediaData.PlexLibraryId,
                 ServerId = mediaData.PlexServerId,
             };

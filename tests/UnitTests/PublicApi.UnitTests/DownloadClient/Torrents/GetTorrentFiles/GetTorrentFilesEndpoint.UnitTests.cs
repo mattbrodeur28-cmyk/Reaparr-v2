@@ -192,6 +192,8 @@ public class GetTorrentFilesEndpointUnitTests : BaseEndpointUnitTest<GetTorrentF
             MovieFolder = movieFolder,
             TvShowFolder = tvShowFolder,
             SeasonFolder = seasonFolder,
+            ArtistFolder = string.Empty,
+            AlbumFolder = string.Empty,
             KeepCompletedInDownloadFolder = false,
         };
 }

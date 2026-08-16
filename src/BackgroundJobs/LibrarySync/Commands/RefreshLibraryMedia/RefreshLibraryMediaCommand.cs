@@ -75,10 +75,14 @@ public class RefreshLibraryMediaCommandHandler : ICommandHandler<RefreshLibraryM
                 new RefreshPlexTvShowLibraryCommand(insertPlexLibraryMediaMetaDataResult.Value),
                 ct
             ),
+            PlexMediaType.Artist => await _commandExecutor.Send(
+                new RefreshPlexMusicLibraryCommand(insertPlexLibraryMediaMetaDataResult.Value),
+                ct
+            ),
             _ => Result.Ok(newPlexLibrary),
         };
 
-        if (newPlexLibrary.Type is not (PlexMediaType.Movie or PlexMediaType.TvShow))
+        if (newPlexLibrary.Type is not (PlexMediaType.Movie or PlexMediaType.TvShow or PlexMediaType.Artist))
         {
             _log.Here()
                 .Warning(

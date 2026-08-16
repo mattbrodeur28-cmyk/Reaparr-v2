@@ -225,6 +225,16 @@ public sealed class DeleteTorrentEndpoint : Endpoint<DeleteTorrentRequest>
             }
         }
 
+        var musicLeafKeys = leafKeys.Where(k => k.Type is DownloadTaskType.MusicTrackData).ToList();
+        foreach (var musicLeafKey in musicLeafKeys)
+        {
+            var rootKey = await _dbContext.GetRootDownloadTaskKeyAsync(musicLeafKey, ct);
+            if (rootKey is not null && rootKey.Type == DownloadTaskType.MusicArtist)
+            {
+                rootKeys.Add(rootKey);
+            }
+        }
+
         return rootKeys;
     }
 
@@ -283,9 +293,26 @@ public sealed class DeleteTorrentEndpoint : Endpoint<DeleteTorrentRequest>
             })
             .ToListAsync(ct);
 
-        await Task.WhenAll(movieTask, episodeTask);
+        var musicTask = _dbContext
+            .DownloadTaskMusicTrackFile.Where(x =>
+                x.HashId != null && (normalizedHashes == null || normalizedHashes.Contains(x.HashId.ToLower()))
+            )
+            .Select(x => new
+            {
+                Key = new DownloadTaskKey
+                {
+                    Id = x.Id,
+                    Type = x.DownloadTaskType,
+                    PlexServerId = x.PlexServerId,
+                    PlexLibraryId = x.PlexLibraryId,
+                },
+                x.DownloadStatus,
+            })
+            .ToListAsync(ct);
 
-        var all = movieTask.Result.Concat(episodeTask.Result).ToList();
+        await Task.WhenAll(movieTask, episodeTask, musicTask);
+
+        var all = movieTask.Result.Concat(episodeTask.Result).Concat(musicTask.Result).ToList();
         return (
             all.Where(x => IsActive(x.DownloadStatus)).Select(x => x.Key).ToList(),
             all.Where(x => !IsActive(x.DownloadStatus)).Select(x => x.Key).ToList(),

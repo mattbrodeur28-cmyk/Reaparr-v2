@@ -50,15 +50,32 @@ public class TorrentMetadataDTOValidator : Validator<TorrentMetadataDTO>
             .WithMessage($"{nameof(TorrentMetadataDTO.PlexApiPartId)} must be greater than 0.");
 
         RuleFor(x => x.Type)
-            .Must(type => type is PlexMediaType.Episode or PlexMediaType.Movie)
-            .WithMessage("Type must be Episode or Movie.");
+            .Must(type => type is PlexMediaType.Episode or PlexMediaType.Movie or PlexMediaType.Song)
+            .WithMessage("Type must be Episode, Movie or Song.");
 
         RuleFor(x => x.Quality).IsInEnum().WithMessage("Quality must be a valid VideoQuality value.");
+
+        RuleFor(x => x.AudioQuality).IsInEnum().WithMessage("AudioQuality must be a valid AudioQuality value.");
     }
+}
+
+/// <summary>
+/// The response for clients that send the <c>X-Reaparr-Client</c> header. qBittorrent-compatible
+/// clients continue to receive the plain <c>Ok.</c> string body.
+/// </summary>
+public record AddTorrentResponse
+{
+    [System.Text.Json.Serialization.JsonPropertyName("hash")]
+    public required string Hash { get; init; }
 }
 
 public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
 {
+    /// <summary>
+    /// Identifies a client that understands Reaparr's additive JSON response.
+    /// </summary>
+    private const string REAPARR_CLIENT_HEADER = "X-Reaparr-Client";
+
     private readonly IReaparrDbContext _dbContext;
     private readonly ICommandExecutor _commandExecutor;
     private readonly ILogger _log;
@@ -193,8 +210,26 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
         // Set the hashId on the created download tasks so Sonarr/Radarr can keep track
         await SetHashIdOnDownloadTask(metadata, hashId);
 
+        // qBittorrent's /torrents/add answers a bare "Ok." with no hash, which forces a client to
+        // recover it by diffing /torrents/info around the add - racy, and only safe while a single
+        // add is in flight. Clients that identify themselves get the hash directly instead.
+        // Strictly additive: *arr clients send no such header and keep the compatible body.
+        if (IsReaparrAwareClient())
+        {
+            await Send.OkAsync(new AddTorrentResponse { Hash = hashId }, ct);
+            return;
+        }
+
         await Send.StringAsync("Ok.", cancellation: ct);
     }
+
+    /// <summary>
+    /// True when the caller identified itself with the Reaparr client header, meaning it can
+    /// handle a JSON body instead of qBittorrent's bare "Ok.".
+    /// </summary>
+    private bool IsReaparrAwareClient() =>
+        HttpContext.Request.Headers.TryGetValue(REAPARR_CLIENT_HEADER, out var value)
+        && !string.IsNullOrWhiteSpace(value.ToString());
 
     private async Task SetHashIdOnDownloadTask(TorrentMetadataDTO metaData, string hashId)
     {
@@ -213,6 +248,15 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
             case PlexMediaType.Movie:
                 count = await _dbContext
                     .DownloadTaskMovieFile.Where(x =>
+                        x.PlexLibraryId == metaData.LibraryId
+                        && x.PlexServerId == metaData.ServerId
+                        && x.PlexApiPartId == metaData.PlexApiPartId
+                    )
+                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.HashId, hashId));
+                break;
+            case PlexMediaType.Song:
+                count = await _dbContext
+                    .DownloadTaskMusicTrackFile.Where(x =>
                         x.PlexLibraryId == metaData.LibraryId
                         && x.PlexServerId == metaData.ServerId
                         && x.PlexApiPartId == metaData.PlexApiPartId

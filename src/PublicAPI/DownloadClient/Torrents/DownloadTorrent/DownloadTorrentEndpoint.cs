@@ -14,9 +14,10 @@ public class DownloadTorrentEndpointRequestValidator : Validator<DownloadTorrent
         RuleFor(x => x.LibraryId).GreaterThan(0);
         RuleFor(x => x.ServerId).GreaterThan(0);
         RuleFor(x => x.Quality).IsInEnum();
+        RuleFor(x => x.AudioQuality).IsInEnum();
         RuleFor(x => x.Type)
-            .Must(type => type is PlexMediaType.Episode or PlexMediaType.Movie)
-            .WithMessage("Type must be Episode or Movie.");
+            .Must(type => type is PlexMediaType.Episode or PlexMediaType.Movie or PlexMediaType.Song)
+            .WithMessage("Type must be Episode, Movie or Song.");
         RuleFor(x => x)
             .Must(r => r.PartId > 0 && r.PlexApiPartId > 0)
             .WithMessage($"Both PartId and {nameof(TorrentMetadataDTO.PlexApiPartId)} must be provided.");
@@ -114,6 +115,14 @@ public class DownloadTorrentEndpoint : Endpoint<DownloadTorrentEndpointRequest>
         {
             return await _dbContext
                 .PlexMovieData.Where(p => p.Id == req.PartId && p.PlexApiPartId == req.PlexApiPartId)
+                .Select(p => new MediaFileInfo { FileName = p.GetFileName, Size = p.Size })
+                .SingleOrDefaultAsync(ct);
+        }
+
+        if (req.Type == PlexMediaType.Song)
+        {
+            return await _dbContext
+                .PlexMusicTrackData.Where(p => p.Id == req.PartId && p.PlexApiPartId == req.PlexApiPartId)
                 .Select(p => new MediaFileInfo { FileName = p.GetFileName, Size = p.Size })
                 .SingleOrDefaultAsync(ct);
         }

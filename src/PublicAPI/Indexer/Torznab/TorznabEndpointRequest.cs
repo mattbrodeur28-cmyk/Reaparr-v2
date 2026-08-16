@@ -4,7 +4,7 @@ public record TorznabEndpointRequest
 {
     /// <summary>
     /// Operation type selector.
-    /// Possible values: "caps", "search", "tvsearch", "movie".
+    /// Possible values: "caps", "search", "tvsearch", "movie", "music".
     /// </summary>
     [QueryParam, BindFrom("t")]
     public string? Type { get; init; }
@@ -45,6 +45,18 @@ public record TorznabEndpointRequest
     /// </summary>
     [QueryParam, BindFrom("tmdbid")]
     public int? TmdbId { get; init; }
+
+    /// <summary>
+    /// Artist name for music queries.
+    /// </summary>
+    [QueryParam, BindFrom("artist")]
+    public string? Artist { get; init; }
+
+    /// <summary>
+    /// Album name for music queries.
+    /// </summary>
+    [QueryParam, BindFrom("album")]
+    public string? Album { get; init; }
 
     /// <summary>
     /// API key provided by the requesting client (Sonarr/Radarr).

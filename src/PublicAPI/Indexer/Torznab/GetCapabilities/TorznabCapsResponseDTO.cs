@@ -54,6 +54,14 @@ public record TorznabSearching
 
     [XmlElement("movie-search")]
     public TorznabSearch MovieSearch { get; set; } = new();
+
+    /// <summary>
+    /// Torznab's music capability. Advertised so Prowlarr/Lidarr will route music queries here.
+    /// SoulSync does not use this path — it uses the richer JSON endpoint at /api/public/music/search,
+    /// because Torznab has no reliable track-level identity.
+    /// </summary>
+    [XmlElement("audio-search")]
+    public TorznabSearch AudioSearch { get; set; } = new();
 }
 
 public record TorznabSearch

@@ -23,6 +23,14 @@ public static partial class PlexMediaDataMapper
     }
 
     /// <summary>
+    /// MusicBrainz IDs are UUIDs rather than integers, so this stays a string.
+    /// Returns null when Plex reported no MusicBrainz identity, which SoulSync's matching
+    /// engine treats as "unknown" rather than "no match".
+    /// </summary>
+    private static string? GetMusicBrainzId(this List<MetaDataGuidsDTO> guids) =>
+        guids.Find(x => x.Id.Contains("mbid"))?.Id.Replace("mbid://", "");
+
+    /// <summary>
     /// Retrieves the MetaDataKey from either the ThumbUrl,BannerUrl, ArtUrl or ThemeUrl.
     /// It is assumed that all MetaDataKeys are the same, returns 0 if nothing is found.
     /// </summary>

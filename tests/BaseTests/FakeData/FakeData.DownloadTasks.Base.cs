@@ -69,6 +69,8 @@ public static partial class FakeData
                         MovieFolder = x.Title,
                         TvShowFolder = string.Empty,
                         SeasonFolder = string.Empty,
+                        ArtistFolder = string.Empty,
+                        AlbumFolder = string.Empty,
                         KeepCompletedInDownloadFolder = false,
                     }
             )

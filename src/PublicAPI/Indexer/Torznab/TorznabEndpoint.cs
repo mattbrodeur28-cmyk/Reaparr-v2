@@ -6,8 +6,8 @@ public class TorznabEndpointRequestValidator : Validator<TorznabEndpointRequest>
     {
         RuleFor(x => x.Type)
             .NotEmpty()
-            .Must(type => new[] { "caps", "search", "tvsearch", "movie" }.Contains(type))
-            .WithMessage("Type must be one of: caps, search, tvsearch, movie");
+            .Must(type => new[] { "caps", "search", "tvsearch", "movie", "music" }.Contains(type))
+            .WithMessage("Type must be one of: caps, search, tvsearch, movie, music");
     }
 }
 
@@ -94,6 +94,25 @@ public sealed class TorznabEndpoint : Endpoint<TorznabEndpointRequest>
                     break;
                 }
                 await Send.XmlAsync(movieSearchResult.Value, cancellationToken: ct);
+                break;
+            case "music":
+                var musicSearchResult = await _commandExecutor.Send(
+                    new SearchMusicCommand
+                    {
+                        Query = req.Query ?? string.Empty,
+                        Artist = req.Artist,
+                        Album = req.Album,
+                        Limit = req.Limit ?? 100,
+                        Offset = req.Offset ?? 0,
+                    },
+                    ct
+                );
+                if (musicSearchResult.IsFailed)
+                {
+                    await Send.ErrorsAsync(cancellation: ct);
+                    break;
+                }
+                await Send.XmlAsync(musicSearchResult.Value, cancellationToken: ct);
                 break;
             default:
                 _log.Here().Error("Received unknown Torznab request type: {Type}", req.Type);

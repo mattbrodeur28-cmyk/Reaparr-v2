@@ -160,6 +160,118 @@ public static partial class DbContextExtensions
                         break;
                     }
 
+                    case DownloadTaskType.MusicArtist:
+                    {
+                        var currentParentId = currentParentKey.Id;
+
+                        var childStatuses = await dbContext
+                            .DownloadTaskMusicAlbum.Where(x => x.ParentId == currentParentId)
+                            .Select(x => x.DownloadStatus)
+                            .ToListAsync(cancellationToken);
+                        var newStatus = DownloadTaskActions.Aggregate(childStatuses);
+
+                        var changedCount = await dbContext
+                            .DownloadTaskMusicArtist.Where(x =>
+                                x.Id == currentParentId && x.DownloadStatus != newStatus
+                            )
+                            .ExecuteUpdateAsync(
+                                p => p.SetProperty(x => x.DownloadStatus, newStatus),
+                                cancellationToken
+                            );
+
+                        if (changedCount > 0)
+                            changedKeys.Add(currentParentKey);
+
+                        parentKey = null;
+                        break;
+                    }
+                    case DownloadTaskType.MusicAlbum:
+                    {
+                        var currentParentId = currentParentKey.Id;
+
+                        var artistId = await dbContext
+                            .DownloadTaskMusicAlbum.Where(x => x.Id == currentParentId)
+                            .Select(x => (Guid?)x.ParentId)
+                            .FirstOrDefaultAsync(cancellationToken);
+
+                        if (artistId is null)
+                        {
+                            parentKey = null;
+                            break;
+                        }
+
+                        var childStatuses = await dbContext
+                            .DownloadTaskMusicTrack.Where(x => x.ParentId == currentParentId)
+                            .Select(x => x.DownloadStatus)
+                            .ToListAsync(cancellationToken);
+                        var newStatus = DownloadTaskActions.Aggregate(childStatuses);
+
+                        var changedCount = await dbContext
+                            .DownloadTaskMusicAlbum.Where(x =>
+                                x.Id == currentParentId && x.DownloadStatus != newStatus
+                            )
+                            .ExecuteUpdateAsync(
+                                p => p.SetProperty(x => x.DownloadStatus, newStatus),
+                                cancellationToken
+                            );
+
+                        if (changedCount > 0)
+                            changedKeys.Add(currentParentKey);
+
+                        parentKey = new DownloadTaskKey
+                        {
+                            Type = DownloadTaskType.MusicArtist,
+                            Id = artistId.Value,
+                            PlexServerId = serverId,
+                            PlexLibraryId = libraryId,
+                        };
+
+                        break;
+                    }
+                    case DownloadTaskType.MusicTrack:
+                    {
+                        var currentParentId = currentParentKey.Id;
+
+                        var albumId = await dbContext
+                            .DownloadTaskMusicTrack.Where(x => x.Id == currentParentId)
+                            .Select(x => (Guid?)x.ParentId)
+                            .FirstOrDefaultAsync(cancellationToken);
+
+                        if (albumId is null)
+                        {
+                            parentKey = null;
+                            break;
+                        }
+
+                        var childStatuses = await dbContext
+                            .DownloadTaskMusicTrackFile.Where(x => x.ParentId == currentParentId)
+                            .Select(x => x.DownloadStatus)
+                            .ToListAsync(cancellationToken);
+                        var newStatus = DownloadTaskActions.Aggregate(childStatuses);
+
+                        var changedCount = await dbContext
+                            .DownloadTaskMusicTrack.Where(x =>
+                                x.Id == currentParentId && x.DownloadStatus != newStatus
+                            )
+                            .ExecuteUpdateAsync(
+                                p => p.SetProperty(x => x.DownloadStatus, newStatus),
+                                cancellationToken
+                            );
+
+                        if (changedCount > 0)
+                            changedKeys.Add(currentParentKey);
+
+                        parentKey = new DownloadTaskKey
+                        {
+                            Type = DownloadTaskType.MusicAlbum,
+                            Id = albumId.Value,
+                            PlexServerId = serverId,
+                            PlexLibraryId = libraryId,
+                        };
+
+                        break;
+                    }
+
                     // The DownloadStatus here is determined by PlexDownloadClient and the MoveDownloadFileJob
                     case DownloadTaskType.MovieData:
                     case DownloadTaskType.MoviePart:
@@ -181,6 +293,18 @@ public static partial class DbContextExtensions
 
                         parentKey = await dbContext
                             .DownloadTaskTvShowEpisodeFile.Where(x => x.Id == episodeDataParentId)
+                            .ProjectToParentKey()
+                            .FirstOrDefaultAsync(cancellationToken);
+                        break;
+                    }
+
+                    // The DownloadStatus here is determined by PlexDownloadClient and the MoveDownloadFileJob
+                    case DownloadTaskType.MusicTrackData:
+                    {
+                        var musicTrackDataParentId = currentParentKey.Id;
+
+                        parentKey = await dbContext
+                            .DownloadTaskMusicTrackFile.Where(x => x.Id == musicTrackDataParentId)
                             .ProjectToParentKey()
                             .FirstOrDefaultAsync(cancellationToken);
                         break;
@@ -250,6 +374,26 @@ public static partial class DbContextExtensions
                     .DownloadTaskTvShowEpisodeFile.Where(x => x.Id == key.Id)
                     .ExecuteUpdateAsync(p => p.SetProperty(x => x.DownloadStatus, status));
                 break;
+            case DownloadTaskType.MusicArtist:
+                await dbContext
+                    .DownloadTaskMusicArtist.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.DownloadStatus, status));
+                break;
+            case DownloadTaskType.MusicAlbum:
+                await dbContext
+                    .DownloadTaskMusicAlbum.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.DownloadStatus, status));
+                break;
+            case DownloadTaskType.MusicTrack:
+                await dbContext
+                    .DownloadTaskMusicTrack.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.DownloadStatus, status));
+                break;
+            case DownloadTaskType.MusicTrackData:
+                await dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.DownloadStatus, status));
+                break;
             default:
                 throw new ArgumentOutOfRangeException($"{key.Type} is not supported in {nameof(SetDownloadStatus)}");
         }
@@ -293,6 +437,26 @@ public static partial class DbContextExtensions
             case DownloadTaskType.EpisodePart:
                 return await dbContext
                     .DownloadTaskTvShowEpisodeFile.Where(x => x.Id == key.Id)
+                    .Select(x => (DownloadStatus?)x.DownloadStatus)
+                    .FirstOrDefaultAsync(cancellationToken);
+            case DownloadTaskType.MusicArtist:
+                return await dbContext
+                    .DownloadTaskMusicArtist.Where(x => x.Id == key.Id)
+                    .Select(x => (DownloadStatus?)x.DownloadStatus)
+                    .FirstOrDefaultAsync(cancellationToken);
+            case DownloadTaskType.MusicAlbum:
+                return await dbContext
+                    .DownloadTaskMusicAlbum.Where(x => x.Id == key.Id)
+                    .Select(x => (DownloadStatus?)x.DownloadStatus)
+                    .FirstOrDefaultAsync(cancellationToken);
+            case DownloadTaskType.MusicTrack:
+                return await dbContext
+                    .DownloadTaskMusicTrack.Where(x => x.Id == key.Id)
+                    .Select(x => (DownloadStatus?)x.DownloadStatus)
+                    .FirstOrDefaultAsync(cancellationToken);
+            case DownloadTaskType.MusicTrackData:
+                return await dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
                     .Select(x => (DownloadStatus?)x.DownloadStatus)
                     .FirstOrDefaultAsync(cancellationToken);
             default:

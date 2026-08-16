@@ -134,6 +134,12 @@ export const Convert = {
 				return PlexMediaType.Season;
 			case DownloadTaskType.Episode:
 				return PlexMediaType.Episode;
+			case DownloadTaskType.MusicArtist:
+				return PlexMediaType.Artist;
+			case DownloadTaskType.MusicAlbum:
+				return PlexMediaType.Album;
+			case DownloadTaskType.MusicTrack:
+				return PlexMediaType.Song;
 			default:
 				return PlexMediaType.Unknown;
 		}
@@ -148,6 +154,12 @@ export const Convert = {
 				return DownloadTaskType.Season;
 			case PlexMediaType.Episode:
 				return DownloadTaskType.Episode;
+			case PlexMediaType.Artist:
+				return DownloadTaskType.MusicArtist;
+			case PlexMediaType.Album:
+				return DownloadTaskType.MusicAlbum;
+			case PlexMediaType.Song:
+				return DownloadTaskType.MusicTrack;
 			default:
 				return DownloadTaskType.None;
 		}

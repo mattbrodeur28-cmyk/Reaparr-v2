@@ -41,6 +41,7 @@ public class DownloadTorrentEndpointUnitTests : BaseEndpointUnitTest<DownloadTor
             PartId = episodeData.Id,
             PlexApiPartId = episodeData.PlexApiPartId,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = library.Id,
             ServerId = server.Id,
         };
@@ -111,6 +112,7 @@ public class DownloadTorrentEndpointUnitTests : BaseEndpointUnitTest<DownloadTor
             PartId = movieData.Id,
             PlexApiPartId = movieData.PlexApiPartId,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = library.Id,
             ServerId = server.Id,
         };
@@ -181,6 +183,7 @@ public class DownloadTorrentEndpointUnitTests : BaseEndpointUnitTest<DownloadTor
             PartId = 9999,
             PlexApiPartId = 9999,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = library.Id,
             ServerId = server.Id,
         };
@@ -205,6 +208,7 @@ public class DownloadTorrentEndpointUnitTests : BaseEndpointUnitTest<DownloadTor
             PartId = 1,
             PlexApiPartId = 1,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = 1,
             ServerId = 1,
         };
@@ -230,6 +234,7 @@ public class DownloadTorrentEndpointUnitTests : BaseEndpointUnitTest<DownloadTor
             PartId = 0,
             PlexApiPartId = 0,
             Quality = (VideoQuality)999,
+            AudioQuality = AudioQuality.None,
             LibraryId = 0,
             ServerId = 0,
         };
@@ -255,6 +260,7 @@ public class DownloadTorrentEndpointUnitTests : BaseEndpointUnitTest<DownloadTor
             PartId = 1,
             PlexApiPartId = 1,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = 1,
             ServerId = 1,
         };

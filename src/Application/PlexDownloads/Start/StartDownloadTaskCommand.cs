@@ -73,7 +73,7 @@ public class StartDownloadTaskCommandHandler : ICommandHandler<StartDownloadTask
             $"Start requested for download task {nextDownloadTaskKey.Id} ({nextDownloadTask.FileName})"
         );
 
-        if (key.Type is DownloadTaskType.TvShow or DownloadTaskType.Season)
+        if (key.Type is DownloadTaskType.TvShow or DownloadTaskType.Season or DownloadTaskType.MusicArtist or DownloadTaskType.MusicAlbum)
         {
             var statusesToQueue = nextDownloadTask.DownloadStatus switch
             {

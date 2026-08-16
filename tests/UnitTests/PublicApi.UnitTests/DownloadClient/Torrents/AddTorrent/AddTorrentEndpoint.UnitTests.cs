@@ -68,6 +68,7 @@ public class AddTorrentEndpointUnitTests : BaseEndpointUnitTest<AddTorrentEndpoi
             PartId = 0, // Invalid - should be > 0
             PlexApiPartId = 0, // Invalid - should be > 0
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = 0, // Invalid - should be > 0
             ServerId = 0, // Invalid - should be > 0
         };
@@ -152,6 +153,7 @@ public class AddTorrentEndpointUnitTests : BaseEndpointUnitTest<AddTorrentEndpoi
             PartId = 0,
             PlexApiPartId = 0,
             Quality = (VideoQuality)999, // Invalid enum value
+            AudioQuality = AudioQuality.None,
             LibraryId = 0,
             ServerId = 0,
         };
@@ -237,6 +239,7 @@ public class AddTorrentEndpointUnitTests : BaseEndpointUnitTest<AddTorrentEndpoi
             PartId = 1,
             PlexApiPartId = movieFile.PlexApiPartId,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = library.Id,
             ServerId = server.Id,
         };
@@ -316,6 +319,7 @@ public class AddTorrentEndpointUnitTests : BaseEndpointUnitTest<AddTorrentEndpoi
             PartId = 1,
             PlexApiPartId = episodeFile.PlexApiPartId,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = library.Id,
             ServerId = server.Id,
         };
@@ -369,6 +373,7 @@ public class AddTorrentEndpointUnitTests : BaseEndpointUnitTest<AddTorrentEndpoi
             PartId = 1,
             PlexApiPartId = 12345,
             Quality = VideoQuality.HD,
+            AudioQuality = AudioQuality.None,
             LibraryId = 1,
             ServerId = 1,
         };

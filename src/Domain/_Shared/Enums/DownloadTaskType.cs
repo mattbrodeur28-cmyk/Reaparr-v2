@@ -41,4 +41,19 @@ public enum DownloadTaskType
 
     [JsonStringEnumMemberName(nameof(EpisodePart))]
     EpisodePart = 8,
+
+    [JsonStringEnumMemberName(nameof(MusicArtist))]
+    MusicArtist = 9,
+
+    [JsonStringEnumMemberName(nameof(MusicAlbum))]
+    MusicAlbum = 10,
+
+    [JsonStringEnumMemberName(nameof(MusicTrack))]
+    MusicTrack = 11,
+
+    /// <summary>
+    /// A music track of a particular format or quality, the audio counterpart to <see cref="EpisodeData"/>.
+    /// </summary>
+    [JsonStringEnumMemberName(nameof(MusicTrackData))]
+    MusicTrackData = 12,
 }

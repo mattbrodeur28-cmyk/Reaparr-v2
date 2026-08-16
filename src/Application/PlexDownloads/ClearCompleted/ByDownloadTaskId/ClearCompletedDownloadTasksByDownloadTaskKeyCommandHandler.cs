@@ -56,6 +56,22 @@ public class ClearCompletedDownloadTasksByDownloadTaskKeyCommandHandler
             await ConfirmCompleted(_dbContext.DownloadTaskTvShowEpisode, byType[DownloadTaskType.Episode].ToList(), ct)
         );
         confirmedKeys.UnionWith(
+            await ConfirmCompleted(_dbContext.DownloadTaskMusicArtist, byType[DownloadTaskType.MusicArtist].ToList(), ct)
+        );
+        confirmedKeys.UnionWith(
+            await ConfirmCompleted(_dbContext.DownloadTaskMusicAlbum, byType[DownloadTaskType.MusicAlbum].ToList(), ct)
+        );
+        confirmedKeys.UnionWith(
+            await ConfirmCompleted(_dbContext.DownloadTaskMusicTrack, byType[DownloadTaskType.MusicTrack].ToList(), ct)
+        );
+        confirmedKeys.UnionWith(
+            await ConfirmCompleted(
+                _dbContext.DownloadTaskMusicTrackFile,
+                byType[DownloadTaskType.MusicTrackData].ToList(),
+                ct
+            )
+        );
+        confirmedKeys.UnionWith(
             await ConfirmCompleted(
                 _dbContext.DownloadTaskTvShowEpisodeFile,
                 byType[DownloadTaskType.EpisodeData].Concat(byType[DownloadTaskType.EpisodePart]).ToList(),

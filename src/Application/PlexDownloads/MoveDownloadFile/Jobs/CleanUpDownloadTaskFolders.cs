@@ -57,9 +57,15 @@ public class CleanUpDownloadTaskFoldersHandler : ICommandHandler<CleanUpDownload
         if (result.IsFailed)
             return result;
 
-        if (downloadTask.DownloadTaskType == DownloadTaskType.EpisodeData)
+        // MusicTrackData nests Artist/Album the same way EpisodeData nests TvShow/Season,
+        // so both need the extra parent-folder cleanup.
+        if (
+            downloadTask.DownloadTaskType
+            is DownloadTaskType.EpisodeData
+                or DownloadTaskType.MusicTrackData
+        )
         {
-            // This deletes the TvShow folder
+            // This deletes the TvShow or Artist folder
             var result2 = DeleteDirectoryFromFilePath(downloadTask.DownloadDirectory);
             if (result2.IsFailed)
                 return result2;

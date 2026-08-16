@@ -137,6 +137,9 @@ public class SetLibraryEnabledEndpoint : Endpoint<SetLibraryEnabledRequest, Resu
                 PlexMediaType.TvShow => await dbContext.PlexTvShows
                     .Where(x => x.PlexLibraryId == plexLibrary.Id)
                     .ExecuteDeleteAsync(txCt),
+                PlexMediaType.Artist => await dbContext.PlexMusicArtists
+                    .Where(x => x.PlexLibraryId == plexLibrary.Id)
+                    .ExecuteDeleteAsync(txCt),
                 _ => throw new ArgumentOutOfRangeException(nameof(plexLibrary.Type), plexLibrary.Type, null),
             };
 

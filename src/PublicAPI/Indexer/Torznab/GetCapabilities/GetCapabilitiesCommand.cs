@@ -37,6 +37,11 @@ public class GetCapabilitiesCommandHandler : ICommandHandler<GetCapabilitiesComm
                     Available = "yes",
                     SupportedParams = "q,imdbid,tmdbid,extended,attrs,cat,limit,offset",
                 },
+                AudioSearch = new TorznabSearch
+                {
+                    Available = "yes",
+                    SupportedParams = "q,artist,album,extended,attrs,cat,limit,offset",
+                },
             },
             Attributes =
             [
@@ -59,6 +64,11 @@ public class GetCapabilitiesCommandHandler : ICommandHandler<GetCapabilitiesComm
                 new TorznabCategory(2050, "Movies/BluRay"),
                 new TorznabCategory(2060, "Movies/3D"),
                 new TorznabCategory(2070, "Movies/WEBDL"),
+                // Audio
+                new TorznabCategory(3000, "Audio"),
+                new TorznabCategory(3010, "Audio/MP3"),
+                new TorznabCategory(3030, "Audio/Audiobook"),
+                new TorznabCategory(3040, "Audio/Lossless"),
                 // TV
                 new TorznabCategory(5000, "TV"),
                 new TorznabCategory(5030, "TV/HD"),

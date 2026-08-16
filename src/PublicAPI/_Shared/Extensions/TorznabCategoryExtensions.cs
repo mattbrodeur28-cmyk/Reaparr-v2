@@ -44,6 +44,21 @@ public static class TorznabCategoryExtensions
         };
     }
 
+    /// <summary>
+    /// Determine Torznab category for a music release.
+    /// Torznab's audio range only meaningfully distinguishes lossless from lossy.
+    /// </summary>
+    public static int ToTorznabMusicCategory(this PlexMusicTrackMediaData part) =>
+        part.AudioQuality switch
+        {
+            AudioQuality.Lossless or AudioQuality.Lossless_HiRes => (int)TorznabCategoryId.Audio_Lossless,
+
+            AudioQuality.Lossy_Low or AudioQuality.Lossy_Standard or AudioQuality.Lossy_High => (int)
+                TorznabCategoryId.Audio_MP3,
+
+            _ => (int)TorznabCategoryId.Audio,
+        };
+
     private static bool IsUhdResolution(VideoQuality resolution) =>
         resolution switch
         {

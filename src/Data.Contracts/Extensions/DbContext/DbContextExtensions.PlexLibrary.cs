@@ -143,4 +143,23 @@ public static partial class DbContextExtensions
                     .SetProperty(x => x.MediaSize, mediaSize)
             );
     }
+
+    public static async Task SetMusicMediaMetrics(
+        this IReaparrDbContext dbContext,
+        int plexLibraryId,
+        int artistCount,
+        int albumCount,
+        int trackCount,
+        long mediaSize
+    )
+    {
+        await dbContext
+            .PlexLibraries.Where(x => x.Id == plexLibraryId)
+            .ExecuteUpdateAsync(p =>
+                p.SetProperty(x => x.ArtistCount, artistCount)
+                    .SetProperty(x => x.AlbumCount, albumCount)
+                    .SetProperty(x => x.TrackCount, trackCount)
+                    .SetProperty(x => x.MediaSize, mediaSize)
+            );
+    }
 }

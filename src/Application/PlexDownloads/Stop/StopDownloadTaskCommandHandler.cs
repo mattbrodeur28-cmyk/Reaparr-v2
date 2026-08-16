@@ -45,7 +45,12 @@ public class StopDownloadTaskCommandHandler : ICommandHandler<StopDownloadTaskCo
         // For TvShow/Season, only stop children that are actively running — others may still
         // be queued and must not have their partial files or state disturbed. For Movie/Episode
         // the parent maps 1-to-1 with its file tasks, so always stop regardless of activity.
-        var stopOnlyActiveChildren = key.Type is DownloadTaskType.TvShow or DownloadTaskType.Season;
+        var stopOnlyActiveChildren =
+            key.Type
+                is DownloadTaskType.TvShow
+                    or DownloadTaskType.Season
+                    or DownloadTaskType.MusicArtist
+                    or DownloadTaskType.MusicAlbum;
 
         foreach (var downloadTaskKey in downloadTasks)
         {

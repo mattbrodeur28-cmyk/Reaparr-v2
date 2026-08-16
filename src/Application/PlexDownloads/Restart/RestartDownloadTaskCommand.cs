@@ -42,7 +42,10 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
             return ResultExtensions.EntityNotFound(nameof(DownloadTaskGeneric), command.DownloadTaskGuid).LogWarning();
 
         var isLeafRestart =
-            downloadTaskKey.Type is DownloadTaskType.MovieData or DownloadTaskType.EpisodeData;
+            downloadTaskKey.Type
+            is DownloadTaskType.MovieData
+                or DownloadTaskType.EpisodeData
+                or DownloadTaskType.MusicTrackData;
         var childKeys = new List<DownloadTaskKey>();
 
         if (isLeafRestart)
@@ -158,6 +161,12 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
                     if (refreshEpisodeResult.IsFailed)
                         continue;
                     break;
+
+                case DownloadTaskType.MusicTrackData:
+                    var refreshTrackResult = await RefreshMusicTrackDownloadTask(childKey, cancellationToken);
+                    if (refreshTrackResult.IsFailed)
+                        continue;
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException($"The {downloadTask.DownloadTaskType} is unsupported");
             }
@@ -226,6 +235,8 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
                     MovieFolder = x.PlexMovie.Title.SanitizeFolderName(),
                     TvShowFolder = string.Empty,
                     SeasonFolder = string.Empty,
+                    ArtistFolder = string.Empty,
+                    AlbumFolder = string.Empty,
                     KeepCompletedInDownloadFolder = downloadTask.DirectoryMeta.KeepCompletedInDownloadFolder,
                 },
                 DataReceived = 0,
@@ -309,6 +320,8 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
                     MovieFolder = string.Empty,
                     TvShowFolder = x.PlexTvShowEpisode!.TvShow!.Title.SanitizeFolderName(),
                     SeasonFolder = x.PlexTvShowEpisode!.TvShowSeason!.Title.SanitizeFolderName(),
+                    ArtistFolder = string.Empty,
+                    AlbumFolder = string.Empty,
                     KeepCompletedInDownloadFolder = downloadTask.DirectoryMeta.KeepCompletedInDownloadFolder,
                 },
                 DataReceived = 0,
@@ -344,6 +357,96 @@ public class RestartDownloadTaskCommandHandler : ICommandHandler<RestartDownload
         return await Result.Try(async Task () =>
         {
             _dbContext.DownloadTaskTvShowEpisodeFile.Update(newDownloadTask);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        });
+    }
+    private async Task<Result> RefreshMusicTrackDownloadTask(
+        DownloadTaskKey downloadTaskKey,
+        CancellationToken cancellationToken
+    )
+    {
+        var downloadTask = await _dbContext.DownloadTaskMusicTrackFile.FirstOrDefaultAsync(
+            x => x.Id == downloadTaskKey.Id,
+            CancellationToken.None
+        );
+        if (downloadTask is null)
+            return ResultExtensions.EntityNotFound(nameof(DownloadTaskGeneric), downloadTaskKey.Id).LogError();
+
+        var newDownloadTask = await _dbContext
+            .PlexMusicTrackData.Include(x => x.PlexMusicTrack)
+            .ThenInclude(x => x!.Album)
+            .Include(x => x.PlexMusicTrack)
+            .ThenInclude(x => x!.Artist)
+            .Where(x =>
+                x.PlexApiMediaId == downloadTask.PlexApiMediaId && x.PlexApiPartId == downloadTask.PlexApiPartId
+            )
+            .Select(x => new DownloadTaskMusicTrackFile
+            {
+                Id = downloadTask.Id,
+                Parent = downloadTask.Parent,
+                ParentId = downloadTask.ParentId,
+                Title = x.GetFileName,
+                DownloadStatus = DownloadStatus.Queued,
+                CreatedAt = DateTime.UtcNow,
+                FullTitle = $"{x.PlexMusicTrack!.FullTitle}/{x.GetFileName}",
+                PlexServerId = downloadTask.PlexServerId,
+                PlexLibraryId = downloadTask.PlexLibraryId,
+                PlexApiRatingKey = downloadTask.PlexApiRatingKey,
+                PlexApiMediaId = downloadTask.PlexApiMediaId,
+                PlexApiPartId = downloadTask.PlexApiPartId,
+                FileName = x.GetFileName,
+                FileLocationUrl = x.Key,
+                HashId = downloadTask.HashId,
+
+                // DownloadTaskFileBase.Quality is a VideoQuality with no audio meaning;
+                // the audio tier lives on PlexMusicTrackMediaData.AudioQuality.
+                Quality = VideoQuality.None,
+                DirectoryMeta = new DownloadTaskDirectory
+                {
+                    DownloadRootPath = string.Empty,
+                    DestinationRootPath = downloadTask.DirectoryMeta.DestinationRootPath,
+                    MovieFolder = string.Empty,
+                    TvShowFolder = string.Empty,
+                    SeasonFolder = string.Empty,
+                    ArtistFolder = x.PlexMusicTrack!.Artist!.Title.SanitizeFolderName(),
+                    AlbumFolder = x.PlexMusicTrack!.Album!.Title.SanitizeFolderName(),
+                    KeepCompletedInDownloadFolder = downloadTask.DirectoryMeta.KeepCompletedInDownloadFolder,
+                },
+                DataReceived = 0,
+                DataTotal = 0,
+                DownloadSpeed = 0,
+                DirectDownloadSnapshot = null,
+                DownloadClientType = downloadTask.DownloadClientType,
+                FileTransferSpeed = 0,
+                FileDataTransferred = 0,
+                TimeRemaining = 0,
+                DestinationFolderPathId = downloadTask.DestinationFolderPathId,
+            })
+            .FirstOrDefaultAsync(CancellationToken.None);
+
+        if (newDownloadTask is null)
+        {
+            await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(
+                downloadTask.ToKey(),
+                DownloadStatus.SourceUnavailable,
+                CancellationToken.None
+            );
+
+            await _dbContext.CreateDownloadClientLog(
+                downloadTask.ToKey(),
+                NotificationLevel.Information,
+                DownloadStatus.SourceUnavailable,
+                $"Could not find the original source media for download task \"{downloadTaskKey}\" with title \"{downloadTask.FullTitle}\""
+            );
+
+            return Result.Fail(
+                $"Could not find the original source media for download task \"{downloadTaskKey}\" with title \"{downloadTask.FullTitle}\""
+            );
+        }
+
+        return await Result.Try(async Task () =>
+        {
+            _dbContext.DownloadTaskMusicTrackFile.Update(newDownloadTask);
             await _dbContext.SaveChangesAsync(cancellationToken);
         });
     }

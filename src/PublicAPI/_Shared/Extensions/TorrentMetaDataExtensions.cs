@@ -13,6 +13,7 @@ public static class TorrentMetaDataExtensions
             PartId = dictionary.GetIntValue(nameof(TorrentMetadataDTO.PartId)),
             PlexApiPartId = dictionary.GetIntValue(nameof(TorrentMetadataDTO.PlexApiPartId)),
             Quality = dictionary.GetEnumValue<VideoQuality>(nameof(TorrentMetadataDTO.Quality)),
+            AudioQuality = dictionary.GetEnumValue<AudioQuality>(nameof(TorrentMetadataDTO.AudioQuality)),
             LibraryId = dictionary.GetIntValue(nameof(TorrentMetadataDTO.LibraryId)),
             ServerId = dictionary.GetIntValue(nameof(TorrentMetadataDTO.ServerId)),
         };

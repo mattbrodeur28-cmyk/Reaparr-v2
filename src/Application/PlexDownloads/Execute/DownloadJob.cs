@@ -202,6 +202,11 @@ public class DownloadJob : IJob
                     .DownloadTaskTvShowEpisodeFile.Where(x => x.Id == downloadTask.Id)
                     .ExecuteUpdateAsync(p => p.SetProperty(x => x.DirectoryMeta, downloadTask.DirectoryMeta));
                 break;
+            case DownloadTaskType.MusicTrackData:
+                await _dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == downloadTask.Id)
+                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.DirectoryMeta, downloadTask.DirectoryMeta));
+                break;
             default:
                 return Result.Fail($"DownloadTaskType {downloadTask.DownloadTaskType} is not supported");
         }

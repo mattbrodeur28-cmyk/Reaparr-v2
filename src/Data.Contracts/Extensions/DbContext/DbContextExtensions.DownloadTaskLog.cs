@@ -67,6 +67,42 @@ public static partial class DbContextExtensions
                         .ApplyTake(take ?? 0)
                         .ToListAsync(ct)
             ),
+            DownloadTaskType.MusicArtist => await Result.Try(async Task<List<DownloadTaskLogBase>> () =>
+                await dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskMusicArtistId == downloadTaskKey.Id)
+                    .ApplyWhere(sinceId != null, x => x.Id > sinceId)
+                    .OrderBy(x => x.Id)
+                    .Select(x => (DownloadTaskLogBase)x)
+                    .ApplyTake(take ?? 0)
+                    .ToListAsync(ct)
+            ),
+            DownloadTaskType.MusicAlbum => await Result.Try(async Task<List<DownloadTaskLogBase>> () =>
+                await dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskMusicAlbumId == downloadTaskKey.Id)
+                    .ApplyWhere(sinceId != null, x => x.Id > sinceId)
+                    .OrderBy(x => x.Id)
+                    .Select(x => (DownloadTaskLogBase)x)
+                    .ApplyTake(take ?? 0)
+                    .ToListAsync(ct)
+            ),
+            DownloadTaskType.MusicTrack => await Result.Try(async Task<List<DownloadTaskLogBase>> () =>
+                await dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskMusicTrackId == downloadTaskKey.Id)
+                    .ApplyWhere(sinceId != null, x => x.Id > sinceId)
+                    .OrderBy(x => x.Id)
+                    .Select(x => (DownloadTaskLogBase)x)
+                    .ApplyTake(take ?? 0)
+                    .ToListAsync(ct)
+            ),
+            DownloadTaskType.MusicTrackData => await Result.Try(async Task<List<DownloadTaskLogBase>> () =>
+                await dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskFileId == downloadTaskKey.Id)
+                    .ApplyWhere(sinceId != null, x => x.Id > sinceId)
+                    .OrderBy(x => x.Id)
+                    .Select(x => (DownloadTaskLogBase)x)
+                    .ApplyTake(take ?? 0)
+                    .ToListAsync(ct)
+            ),
             _ => Result.Fail($"DownloadTaskLog of type {downloadTaskKey.Type} not implemented").LogError(),
         };
 
@@ -105,6 +141,26 @@ public static partial class DbContextExtensions
             DownloadTaskType.EpisodeData or DownloadTaskType.EpisodePart => await Result.Try(() =>
                 dbContext
                     .DownloadTaskTvShowEpisodeFileLogs.Where(x => x.DownloadTaskFileId == downloadTaskKey.Id)
+                    .ExecuteDeleteAsync(ct)
+            ),
+            DownloadTaskType.MusicArtist => await Result.Try(() =>
+                dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskMusicArtistId == downloadTaskKey.Id)
+                    .ExecuteDeleteAsync(ct)
+            ),
+            DownloadTaskType.MusicAlbum => await Result.Try(() =>
+                dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskMusicAlbumId == downloadTaskKey.Id)
+                    .ExecuteDeleteAsync(ct)
+            ),
+            DownloadTaskType.MusicTrack => await Result.Try(() =>
+                dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskMusicTrackId == downloadTaskKey.Id)
+                    .ExecuteDeleteAsync(ct)
+            ),
+            DownloadTaskType.MusicTrackData => await Result.Try(() =>
+                dbContext
+                    .DownloadTaskMusicTrackFileLogs.Where(x => x.DownloadTaskFileId == downloadTaskKey.Id)
                     .ExecuteDeleteAsync(ct)
             ),
             _ => Result.Fail($"DownloadTaskLog of type {downloadTaskKey.Type} not implemented").LogError(),

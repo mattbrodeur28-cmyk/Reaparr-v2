@@ -40,6 +40,10 @@ public class DeleteDownloadTasksByKeyCommandHandler : ICommandHandler<DeleteDown
         var seasonIds = byType[DownloadTaskType.Season].ToList();
         var episodeIds = byType[DownloadTaskType.Episode].ToList();
         var episodeFileIds = byType[DownloadTaskType.EpisodeData].Concat(byType[DownloadTaskType.EpisodePart]).ToList();
+        var musicArtistIds = byType[DownloadTaskType.MusicArtist].ToList();
+        var musicAlbumIds = byType[DownloadTaskType.MusicAlbum].ToList();
+        var musicTrackIds = byType[DownloadTaskType.MusicTrack].ToList();
+        var musicTrackFileIds = byType[DownloadTaskType.MusicTrackData].ToList();
 
         if (movieIds.Count > 0)
             await _dbContext.DownloadTaskMovie.Where(x => movieIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
@@ -54,6 +58,16 @@ public class DeleteDownloadTasksByKeyCommandHandler : ICommandHandler<DeleteDown
         if (episodeFileIds.Count > 0)
             await _dbContext
                 .DownloadTaskTvShowEpisodeFile.Where(x => episodeFileIds.Contains(x.Id))
+                .ExecuteDeleteAsync(ct);
+        if (musicArtistIds.Count > 0)
+            await _dbContext.DownloadTaskMusicArtist.Where(x => musicArtistIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
+        if (musicAlbumIds.Count > 0)
+            await _dbContext.DownloadTaskMusicAlbum.Where(x => musicAlbumIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
+        if (musicTrackIds.Count > 0)
+            await _dbContext.DownloadTaskMusicTrack.Where(x => musicTrackIds.Contains(x.Id)).ExecuteDeleteAsync(ct);
+        if (musicTrackFileIds.Count > 0)
+            await _dbContext
+                .DownloadTaskMusicTrackFile.Where(x => musicTrackFileIds.Contains(x.Id))
                 .ExecuteDeleteAsync(ct);
 
         // Exclude roots that were already directly deleted above — orphan cleanup only

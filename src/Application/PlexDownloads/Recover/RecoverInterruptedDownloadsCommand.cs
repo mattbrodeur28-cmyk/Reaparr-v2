@@ -40,6 +40,12 @@ public class RecoverInterruptedDownloadsCommandHandler : ICommandHandler<Recover
             .Select(x => new { x.Id, x.FullTitle, x.PlexServerId, x.PlexLibraryId, x.DownloadStatus })
             .ToListAsync(cancellationToken);
 
+        var musicFileZombies = await dbContext.DownloadTaskMusicTrackFile
+            .AsNoTracking()
+            .Where(x => x.DownloadStatus == DownloadStatus.Downloading || x.DownloadStatus == DownloadStatus.Moving)
+            .Select(x => new { x.Id, x.FullTitle, x.PlexServerId, x.PlexLibraryId, x.DownloadStatus })
+            .ToListAsync(cancellationToken);
+
         var totalReset = 0;
 
         foreach (var zombie in movieFileZombies)
@@ -92,6 +98,37 @@ public class RecoverInterruptedDownloadsCommandHandler : ICommandHandler<Recover
                 {
                     Id = zombie.Id,
                     Type = DownloadTaskType.EpisodeData,
+                    PlexServerId = zombie.PlexServerId,
+                    PlexLibraryId = zombie.PlexLibraryId,
+                },
+                zombie.DownloadStatus == DownloadStatus.Moving
+                    ? DownloadStatus.AutoMovePaused
+                    : DownloadStatus.AutoPaused,
+                cancellationToken
+            );
+
+            totalReset++;
+        }
+
+        foreach (var zombie in musicFileZombies)
+        {
+            _log.Here()
+                .Warning(
+                    "Recovering interrupted download task {DownloadTaskId} ({FullTitle}) on PlexServer {PlexServerId} — was left in {DownloadStatus} across a restart, resetting to {ResetStatus}",
+                    zombie.Id,
+                    zombie.FullTitle,
+                    zombie.PlexServerId,
+                    zombie.DownloadStatus,
+                    zombie.DownloadStatus == DownloadStatus.Moving
+                        ? DownloadStatus.AutoMovePaused
+                        : DownloadStatus.AutoPaused
+                );
+
+            await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(
+                new DownloadTaskKey
+                {
+                    Id = zombie.Id,
+                    Type = DownloadTaskType.MusicTrackData,
                     PlexServerId = zombie.PlexServerId,
                     PlexLibraryId = zombie.PlexLibraryId,
                 },

@@ -70,6 +70,18 @@ public class CreateDownloadTasksCommandHandler
             _generatedTasks = true;
         }
 
+        if (downloadMedias.Any(x => x.Type == PlexMediaType.Song))
+        {
+            var result = await _commandExecutor.Send(
+                new GenerateDownloadTaskMusicTracksCommand(request),
+                cancellationToken
+            );
+            if (result.IsFailed)
+                return result.LogError();
+            report += result.Value;
+            _generatedTasks = true;
+        }
+
         if (downloadMedias.Any(x => x.Type == PlexMediaType.Episode))
         {
             var result = await _commandExecutor.Send(

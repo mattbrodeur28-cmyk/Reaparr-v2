@@ -1038,6 +1038,14 @@ namespace Reaparr.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnOrder(17);
 
+                    b.Property<int>("AlbumCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(23);
+
+                    b.Property<int>("ArtistCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(22);
+
                     b.Property<long>("ContentChangedAt")
                         .HasColumnType("INTEGER")
                         .HasColumnOrder(8);
@@ -1114,6 +1122,10 @@ namespace Reaparr.Data.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnOrder(2)
                         .UseCollation("NATURALSORT");
+
+                    b.Property<int>("TrackCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(24);
 
                     b.Property<int>("TvShowCount")
                         .HasColumnType("INTEGER")
@@ -1598,6 +1610,555 @@ namespace Reaparr.Data.Migrations
                     b.HasIndex("PlexMovieId", "Quality");
 
                     b.ToTable("PlexMovieData");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicAlbum", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(0);
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(14);
+
+                    b.Property<int>("ArtistId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChildCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(13);
+
+                    b.Property<string>("ContentRating")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(11);
+
+                    b.Property<int>("Duration")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(6);
+
+                    b.Property<string>("FullTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(22);
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(23);
+
+                    b.Property<string>("Guid_IMDB")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(24);
+
+                    b.Property<string>("Guid_MusicBrainz")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Guid_TMDB")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(25);
+
+                    b.Property<int?>("Guid_TVDB")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(26);
+
+                    b.Property<bool>("HasArt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(19);
+
+                    b.Property<bool>("HasTheme")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(21);
+
+                    b.Property<bool>("HasThumb")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(18);
+
+                    b.Property<long>("MediaSize")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(7);
+
+                    b.Property<DateTime?>("OriginallyAvailableAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(16);
+
+                    b.Property<string>("ParentGuid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ParentKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexApiMetaDataKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(8);
+
+                    b.Property<int>("PlexApiRatingKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(1);
+
+                    b.Property<int>("PlexLibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexServerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Rating")
+                        .HasColumnType("REAL")
+                        .HasColumnOrder(12);
+
+                    b.Property<string>("SearchTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(5);
+
+                    b.Property<int>("SortIndex")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(4);
+
+                    b.Property<string>("Studio")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(9);
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(10);
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(2);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(15);
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(3);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlexServerId");
+
+                    b.HasIndex("SearchTitle");
+
+                    b.HasIndex("ArtistId", "SortIndex");
+
+                    b.HasIndex("PlexApiRatingKey", "PlexServerId");
+
+                    b.HasIndex("PlexLibraryId", "SortIndex");
+
+                    b.ToTable("PlexMusicAlbums");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicArtist", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(0);
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(14);
+
+                    b.Property<int>("ChildCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(13);
+
+                    b.Property<string>("ContentRating")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(11);
+
+                    b.Property<int>("Duration")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(6);
+
+                    b.Property<string>("FullTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(22);
+
+                    b.Property<int>("GrandChildCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(23);
+
+                    b.Property<string>("Guid_IMDB")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(24);
+
+                    b.Property<string>("Guid_MusicBrainz")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Guid_TMDB")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(25);
+
+                    b.Property<int?>("Guid_TVDB")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(26);
+
+                    b.Property<bool>("HasArt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(19);
+
+                    b.Property<bool>("HasTheme")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(21);
+
+                    b.Property<bool>("HasThumb")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(18);
+
+                    b.Property<long>("MediaSize")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(7);
+
+                    b.Property<DateTime?>("OriginallyAvailableAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(16);
+
+                    b.Property<int>("PlexApiMetaDataKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(8);
+
+                    b.Property<int>("PlexApiRatingKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(1);
+
+                    b.Property<int>("PlexLibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexServerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Rating")
+                        .HasColumnType("REAL")
+                        .HasColumnOrder(12);
+
+                    b.Property<string>("SearchTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(5);
+
+                    b.Property<int>("SortIndex")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(4);
+
+                    b.Property<string>("Studio")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(9);
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(10);
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(2);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(15);
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(3);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlexServerId");
+
+                    b.HasIndex("SearchTitle");
+
+                    b.HasIndex("SortIndex");
+
+                    b.HasIndex("PlexApiRatingKey", "PlexServerId");
+
+                    b.HasIndex("PlexLibraryId", "SortIndex");
+
+                    b.ToTable("PlexMusicArtists");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicTrack", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(0);
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(14);
+
+                    b.Property<int>("AlbumId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ArtistId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChildCount")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(13);
+
+                    b.Property<string>("ContentRating")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(11);
+
+                    b.Property<int>("DiscNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Duration")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(6);
+
+                    b.Property<string>("FullTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(22);
+
+                    b.Property<string>("Guid")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(23);
+
+                    b.Property<string>("Guid_IMDB")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(24);
+
+                    b.Property<string>("Guid_MusicBrainz")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Guid_TMDB")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(25);
+
+                    b.Property<int?>("Guid_TVDB")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(26);
+
+                    b.Property<bool>("HasArt")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(19);
+
+                    b.Property<bool>("HasTheme")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(21);
+
+                    b.Property<bool>("HasThumb")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(18);
+
+                    b.Property<long>("MediaSize")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(7);
+
+                    b.Property<DateTime?>("OriginallyAvailableAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(16);
+
+                    b.Property<string>("ParentGuid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ParentKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexApiMetaDataKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(8);
+
+                    b.Property<int>("PlexApiRatingKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(1);
+
+                    b.Property<int>("PlexLibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexServerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Rating")
+                        .HasColumnType("REAL")
+                        .HasColumnOrder(12);
+
+                    b.Property<string>("SearchTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(5);
+
+                    b.Property<int>("SortIndex")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(4);
+
+                    b.Property<string>("Studio")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(9);
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(10);
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(2);
+
+                    b.Property<int>("TrackNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(15);
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(3);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlexLibraryId");
+
+                    b.HasIndex("PlexServerId");
+
+                    b.HasIndex("SearchTitle");
+
+                    b.HasIndex("SortIndex");
+
+                    b.HasIndex("AlbumId", "SortIndex");
+
+                    b.HasIndex("ArtistId", "SortIndex");
+
+                    b.HasIndex("PlexApiRatingKey", "PlexServerId");
+
+                    b.ToTable("PlexMusicTracks");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicTrackMediaData", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(0);
+
+                    b.Property<string>("AudioCodec")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(13);
+
+                    b.Property<int>("AudioQuality")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("BitDepth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Bitrate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Channels")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Container")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(7);
+
+                    b.Property<int>("Duration")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(8);
+
+                    b.Property<string>("GeneratedFilename")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(6);
+
+                    b.Property<DateTime?>("GeneratedNameSyncedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(15);
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(10);
+
+                    b.Property<bool>("NeedsGeneratedName")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(14);
+
+                    b.Property<string>("OriginalFilename")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(5);
+
+                    b.Property<int>("PlexApiMediaId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(2);
+
+                    b.Property<int>("PlexApiPartId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(3);
+
+                    b.Property<int>("PlexApiRatingKey")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(1);
+
+                    b.Property<int>("PlexLibraryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexMusicTrackId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlexServerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("SampleRate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(9);
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(11);
+
+                    b.Property<string>("VideoCodec")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(12);
+
+                    b.Property<int>("VideoResolution")
+                        .HasColumnType("INTEGER")
+                        .HasColumnOrder(4);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AudioQuality");
+
+                    b.HasIndex("PlexApiPartId");
+
+                    b.HasIndex("PlexApiRatingKey");
+
+                    b.HasIndex("PlexLibraryId");
+
+                    b.HasIndex("PlexServerId");
+
+                    b.HasIndex("PlexMusicTrackId", "AudioQuality");
+
+                    b.ToTable("PlexMusicTrackData");
                 });
 
             modelBuilder.Entity("Reaparr.Domain.PlexSeasonComparison", b =>
@@ -2694,6 +3255,37 @@ namespace Reaparr.Data.Migrations
                     b.ToTable("DownloadTaskMovieFileLogs");
                 });
 
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrackFileLog", b =>
+                {
+                    b.HasBaseType("Reaparr.Domain.DownloadTaskLogBase");
+
+                    b.Property<Guid>("DownloadTaskFileId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(5);
+
+                    b.Property<Guid>("DownloadTaskMusicAlbumId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(7);
+
+                    b.Property<Guid>("DownloadTaskMusicArtistId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(8);
+
+                    b.Property<Guid>("DownloadTaskMusicTrackId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(6);
+
+                    b.HasIndex("DownloadTaskFileId");
+
+                    b.HasIndex("DownloadTaskMusicAlbumId");
+
+                    b.HasIndex("DownloadTaskMusicArtistId");
+
+                    b.HasIndex("DownloadTaskMusicTrackId");
+
+                    b.ToTable("DownloadTaskMusicTrackFileLogs");
+                });
+
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskTvShowEpisodeFileLog", b =>
                 {
                     b.HasBaseType("Reaparr.Domain.DownloadTaskLogBase");
@@ -2742,6 +3334,23 @@ namespace Reaparr.Data.Migrations
                     b.ToTable("DownloadTaskMovieFile");
                 });
 
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrackFile", b =>
+                {
+                    b.HasBaseType("Reaparr.Domain.DownloadTaskFileBase");
+
+                    b.Property<Guid>("ParentId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(26);
+
+                    b.HasIndex("HashId");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("PlexLibraryId", "PlexServerId", "PlexApiRatingKey");
+
+                    b.ToTable("DownloadTaskMusicTrackFile");
+                });
+
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskTvShowEpisodeFile", b =>
                 {
                     b.HasBaseType("Reaparr.Domain.DownloadTaskFileBase");
@@ -2766,6 +3375,47 @@ namespace Reaparr.Data.Migrations
                     b.HasIndex("DownloadStatus");
 
                     b.ToTable("DownloadTaskMovie");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicAlbum", b =>
+                {
+                    b.HasBaseType("Reaparr.Domain.DownloadTaskParentBase");
+
+                    b.Property<Guid>("ParentId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(9);
+
+                    b.HasIndex("DownloadStatus");
+
+                    b.HasIndex("ParentId");
+
+                    b.ToTable("DownloadTaskMusicAlbum");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicArtist", b =>
+                {
+                    b.HasBaseType("Reaparr.Domain.DownloadTaskParentBase");
+
+                    b.HasIndex("DownloadStatus");
+
+                    b.HasIndex("PlexServerId", "PlexApiRatingKey");
+
+                    b.ToTable("DownloadTaskMusicArtist");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrack", b =>
+                {
+                    b.HasBaseType("Reaparr.Domain.DownloadTaskParentBase");
+
+                    b.Property<Guid>("ParentId")
+                        .HasColumnType("TEXT")
+                        .HasColumnOrder(9);
+
+                    b.HasIndex("DownloadStatus");
+
+                    b.HasIndex("ParentId");
+
+                    b.ToTable("DownloadTaskMusicTrack");
                 });
 
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskTvShow", b =>
@@ -3194,6 +3844,114 @@ namespace Reaparr.Data.Migrations
                     b.Navigation("PlexServer");
                 });
 
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicAlbum", b =>
+                {
+                    b.HasOne("Reaparr.Domain.PlexMusicArtist", "Artist")
+                        .WithMany("Albums")
+                        .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexLibrary", "PlexLibrary")
+                        .WithMany()
+                        .HasForeignKey("PlexLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexServer", "PlexServer")
+                        .WithMany()
+                        .HasForeignKey("PlexServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Artist");
+
+                    b.Navigation("PlexLibrary");
+
+                    b.Navigation("PlexServer");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicArtist", b =>
+                {
+                    b.HasOne("Reaparr.Domain.PlexLibrary", "PlexLibrary")
+                        .WithMany("MusicArtists")
+                        .HasForeignKey("PlexLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexServer", "PlexServer")
+                        .WithMany()
+                        .HasForeignKey("PlexServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlexLibrary");
+
+                    b.Navigation("PlexServer");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicTrack", b =>
+                {
+                    b.HasOne("Reaparr.Domain.PlexMusicAlbum", "Album")
+                        .WithMany("Tracks")
+                        .HasForeignKey("AlbumId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexMusicArtist", "Artist")
+                        .WithMany()
+                        .HasForeignKey("ArtistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexLibrary", "PlexLibrary")
+                        .WithMany()
+                        .HasForeignKey("PlexLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexServer", "PlexServer")
+                        .WithMany()
+                        .HasForeignKey("PlexServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Album");
+
+                    b.Navigation("Artist");
+
+                    b.Navigation("PlexLibrary");
+
+                    b.Navigation("PlexServer");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicTrackMediaData", b =>
+                {
+                    b.HasOne("Reaparr.Domain.PlexLibrary", "PlexLibrary")
+                        .WithMany()
+                        .HasForeignKey("PlexLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexMusicTrack", "PlexMusicTrack")
+                        .WithMany("MediaDataList")
+                        .HasForeignKey("PlexMusicTrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.PlexServer", "PlexServer")
+                        .WithMany()
+                        .HasForeignKey("PlexServerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlexLibrary");
+
+                    b.Navigation("PlexMusicTrack");
+
+                    b.Navigation("PlexServer");
+                });
+
             modelBuilder.Entity("Reaparr.Domain.PlexSeasonComparison", b =>
                 {
                     b.HasOne("Reaparr.Domain.PlexLibrary", null)
@@ -3488,6 +4246,41 @@ namespace Reaparr.Data.Migrations
                     b.Navigation("DownloadTaskMovie");
                 });
 
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrackFileLog", b =>
+                {
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicTrackFile", "DownloadTaskFile")
+                        .WithMany("Logs")
+                        .HasForeignKey("DownloadTaskFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicAlbum", "DownloadTaskMusicAlbum")
+                        .WithMany()
+                        .HasForeignKey("DownloadTaskMusicAlbumId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicArtist", "DownloadTaskMusicArtist")
+                        .WithMany()
+                        .HasForeignKey("DownloadTaskMusicArtistId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicTrack", "DownloadTaskMusicTrack")
+                        .WithMany()
+                        .HasForeignKey("DownloadTaskMusicTrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DownloadTaskFile");
+
+                    b.Navigation("DownloadTaskMusicAlbum");
+
+                    b.Navigation("DownloadTaskMusicArtist");
+
+                    b.Navigation("DownloadTaskMusicTrack");
+                });
+
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskTvShowEpisodeFileLog", b =>
                 {
                     b.HasOne("Reaparr.Domain.DownloadTaskTvShowEpisodeFile", "DownloadTaskFile")
@@ -3534,9 +4327,42 @@ namespace Reaparr.Data.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrackFile", b =>
+                {
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicTrack", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Parent");
+                });
+
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskTvShowEpisodeFile", b =>
                 {
                     b.HasOne("Reaparr.Domain.DownloadTaskTvShowEpisode", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicAlbum", b =>
+                {
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicArtist", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrack", b =>
+                {
+                    b.HasOne("Reaparr.Domain.DownloadTaskMusicAlbum", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -3599,12 +4425,29 @@ namespace Reaparr.Data.Migrations
                 {
                     b.Navigation("Movies");
 
+                    b.Navigation("MusicArtists");
+
                     b.Navigation("PlexAccountLibraries");
 
                     b.Navigation("TvShows");
                 });
 
             modelBuilder.Entity("Reaparr.Domain.PlexMovie", b =>
+                {
+                    b.Navigation("MediaDataList");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicAlbum", b =>
+                {
+                    b.Navigation("Tracks");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicArtist", b =>
+                {
+                    b.Navigation("Albums");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.PlexMusicTrack", b =>
                 {
                     b.Navigation("MediaDataList");
                 });
@@ -3649,12 +4492,32 @@ namespace Reaparr.Data.Migrations
                     b.Navigation("Logs");
                 });
 
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrackFile", b =>
+                {
+                    b.Navigation("Logs");
+                });
+
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskTvShowEpisodeFile", b =>
                 {
                     b.Navigation("Logs");
                 });
 
             modelBuilder.Entity("Reaparr.Domain.DownloadTaskMovie", b =>
+                {
+                    b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicAlbum", b =>
+                {
+                    b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicArtist", b =>
+                {
+                    b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("Reaparr.Domain.DownloadTaskMusicTrack", b =>
                 {
                     b.Navigation("Children");
                 });

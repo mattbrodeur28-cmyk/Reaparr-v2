@@ -34,9 +34,22 @@ public record TorrentMetadataDTO
 
     /// <summary>
     /// The desired video quality for the torrent download.
+    /// Is <see cref="VideoQuality.None"/> for audio media, which ranks on <see cref="AudioQuality"/> instead.
     /// </summary>
     [QueryParam]
     public required VideoQuality Quality { get; init; }
+
+    /// <summary>
+    /// The desired audio quality for the torrent download.
+    /// Is <see cref="Domain.AudioQuality.None"/> for video media.
+    /// </summary>
+    /// <remarks>
+    /// Audio needs its own field rather than widening <see cref="Quality"/>, because
+    /// <see cref="VideoQuality"/> members are video heights and have no audio meaning. Carrying
+    /// both keeps the video path byte-identical for Sonarr/Radarr.
+    /// </remarks>
+    [QueryParam]
+    public required AudioQuality AudioQuality { get; init; }
 
     /// <summary>
     /// The internal database ID of the Plex library containing this media.
@@ -59,6 +72,7 @@ public record TorrentMetadataDTO
             { nameof(PartId), PartId.ToString() },
             { nameof(PlexApiPartId), PlexApiPartId.ToString() },
             { nameof(Quality), Quality.ToString() },
+            { nameof(AudioQuality), AudioQuality.ToString() },
             { nameof(LibraryId), LibraryId.ToString() },
             { nameof(ServerId), ServerId.ToString() },
         };

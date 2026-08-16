@@ -157,6 +157,13 @@ public abstract class DownloadTaskFileBase : DownloadTaskBase, IDownloadTaskProg
                         DirectoryMeta.TvShowFolder,
                         DirectoryMeta.SeasonFolder
                     );
+                case DownloadTaskType.MusicTrackData:
+                    return Path.Combine(
+                        DirectoryMeta.DownloadRootPath,
+                        "Music",
+                        DirectoryMeta.ArtistFolder,
+                        DirectoryMeta.AlbumFolder
+                    );
                 default:
                     Result.Fail<string>($"Invalid DownloadTaskType of type: {DownloadTaskType}").LogError();
                     return string.Empty;
@@ -184,6 +191,12 @@ public abstract class DownloadTaskFileBase : DownloadTaskBase, IDownloadTaskProg
                         DirectoryMeta.DestinationRootPath,
                         DirectoryMeta.TvShowFolder,
                         DirectoryMeta.SeasonFolder
+                    );
+                case DownloadTaskType.MusicTrackData:
+                    return Path.Combine(
+                        DirectoryMeta.DestinationRootPath,
+                        DirectoryMeta.ArtistFolder,
+                        DirectoryMeta.AlbumFolder
                     );
                 default:
                     Result.Fail<string>($"Invalid DownloadTaskType of type: {DownloadTaskType}").LogError();

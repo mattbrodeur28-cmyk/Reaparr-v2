@@ -15,6 +15,16 @@ public interface IReaparrDbContext : IDisposable
 
     DbSet<DownloadTaskTvShowEpisodeFileLog> DownloadTaskTvShowEpisodeFileLogs { get; }
 
+    DbSet<DownloadTaskMusicArtist> DownloadTaskMusicArtist { get; }
+
+    DbSet<DownloadTaskMusicAlbum> DownloadTaskMusicAlbum { get; }
+
+    DbSet<DownloadTaskMusicTrack> DownloadTaskMusicTrack { get; }
+
+    DbSet<DownloadTaskMusicTrackFile> DownloadTaskMusicTrackFile { get; }
+
+    DbSet<DownloadTaskMusicTrackFileLog> DownloadTaskMusicTrackFileLogs { get; }
+
     DbSet<FolderPath> FolderPaths { get; }
 
     DbSet<Notification> Notifications { get; }
@@ -54,6 +64,18 @@ public interface IReaparrDbContext : IDisposable
     DbSet<PlexTvShowEpisode> PlexTvShowEpisodes { get; }
 
     DbSet<PlexTvShowEpisodeMediaData> PlexTvShowEpisodeData { get; }
+
+    #endregion
+
+    #region PlexMusic
+
+    DbSet<PlexMusicArtist> PlexMusicArtists { get; }
+
+    DbSet<PlexMusicAlbum> PlexMusicAlbums { get; }
+
+    DbSet<PlexMusicTrack> PlexMusicTracks { get; }
+
+    DbSet<PlexMusicTrackMediaData> PlexMusicTrackData { get; }
 
     #endregion
 

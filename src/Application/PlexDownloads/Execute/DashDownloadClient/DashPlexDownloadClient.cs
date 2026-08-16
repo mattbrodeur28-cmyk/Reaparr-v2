@@ -205,6 +205,17 @@ public class DashPlexDownloadClient : IPlexDownloadClient
                         cancellationToken
                     );
                 break;
+            case DownloadTaskType.MusicTrackData:
+                await _dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == downloadTask.Id)
+                    .ExecuteUpdateAsync(
+                        patch =>
+                            patch
+                                .SetProperty(x => x.Title, normalizedFileName)
+                                .SetProperty(x => x.FileName, normalizedFileName),
+                        cancellationToken
+                    );
+                break;
         }
     }
 

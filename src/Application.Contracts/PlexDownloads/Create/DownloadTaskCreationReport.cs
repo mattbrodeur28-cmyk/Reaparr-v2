@@ -10,7 +10,9 @@ public sealed record DownloadTaskCreationReport
     public int Seasons { get; init; }
     public int Episodes { get; init; }
 
-    public int Total => Movies + TvShows + Seasons + Episodes;
+    public int Tracks { get; init; }
+
+    public int Total => Movies + TvShows + Seasons + Episodes + Tracks;
 
     public static DownloadTaskCreationReport operator +(
         DownloadTaskCreationReport left,
@@ -22,5 +24,6 @@ public sealed record DownloadTaskCreationReport
             TvShows = left.TvShows + right.TvShows,
             Seasons = left.Seasons + right.Seasons,
             Episodes = left.Episodes + right.Episodes,
+            Tracks = left.Tracks + right.Tracks,
         };
 }

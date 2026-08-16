@@ -117,6 +117,18 @@ public static partial class DbContextExtensions
         if (await dbContext.DownloadTaskMovieFile.AnyAsync(x => x.Id == guid, cancellationToken))
             return DownloadTaskType.MovieData;
 
+        if (await dbContext.DownloadTaskMusicArtist.AnyAsync(x => x.Id == guid, cancellationToken))
+            return DownloadTaskType.MusicArtist;
+
+        if (await dbContext.DownloadTaskMusicAlbum.AnyAsync(x => x.Id == guid, cancellationToken))
+            return DownloadTaskType.MusicAlbum;
+
+        if (await dbContext.DownloadTaskMusicTrack.AnyAsync(x => x.Id == guid, cancellationToken))
+            return DownloadTaskType.MusicTrack;
+
+        if (await dbContext.DownloadTaskMusicTrackFile.AnyAsync(x => x.Id == guid, cancellationToken))
+            return DownloadTaskType.MusicTrackData;
+
         return DownloadTaskType.None;
     }
 
@@ -212,6 +224,44 @@ public static partial class DbContextExtensions
                         .Include(x => x.PlexLibrary)
                         .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
                     return downloadTaskTvShowEpisodeFile?.ToGeneric() ?? null;
+
+                // DownloadTaskType.MusicArtist
+                case DownloadTaskType.MusicArtist:
+                    var downloadTaskMusicArtist = await dbContext
+                        .DownloadTaskMusicArtist.Include(x => x.PlexServer)
+                        .Include(x => x.PlexLibrary)
+                        .Include(x => x.Children)
+                            .ThenInclude(x => x.Children)
+                                .ThenInclude(x => x.Children)
+                        .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+                    return downloadTaskMusicArtist?.ToGeneric() ?? null;
+
+                // DownloadTaskType.MusicAlbum
+                case DownloadTaskType.MusicAlbum:
+                    var downloadTaskMusicAlbum = await dbContext
+                        .DownloadTaskMusicAlbum.Include(x => x.PlexServer)
+                        .Include(x => x.PlexLibrary)
+                        .Include(x => x.Children)
+                            .ThenInclude(x => x.Children)
+                        .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+                    return downloadTaskMusicAlbum?.ToGeneric() ?? null;
+
+                // DownloadTaskType.MusicTrack
+                case DownloadTaskType.MusicTrack:
+                    var downloadTaskMusicTrack = await dbContext
+                        .DownloadTaskMusicTrack.Include(x => x.PlexServer)
+                        .Include(x => x.PlexLibrary)
+                        .Include(x => x.Children)
+                        .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+                    return downloadTaskMusicTrack?.ToGeneric() ?? null;
+
+                // DownloadTaskType.MusicTrackData
+                case DownloadTaskType.MusicTrackData:
+                    var downloadTaskMusicTrackFile = await dbContext
+                        .DownloadTaskMusicTrackFile.Include(x => x.PlexServer)
+                        .Include(x => x.PlexLibrary)
+                        .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+                    return downloadTaskMusicTrackFile?.ToGeneric() ?? null;
 
                 default:
                     return null;
@@ -382,10 +432,15 @@ public static partial class DbContextExtensions
                 .DownloadTaskTvShowEpisodeFile.AsNoTracking()
                 .Where(x => x.PlexServerId == plexServerId && x.DownloadStatus == status);
 
+            var musicQuery = dbContext
+                .DownloadTaskMusicTrackFile.AsNoTracking()
+                .Where(x => x.PlexServerId == plexServerId && x.DownloadStatus == status);
+
             if (excludedIds.Length > 0)
             {
                 movieQuery = movieQuery.Where(x => !excludedIds.Contains(x.Id));
                 episodeQuery = episodeQuery.Where(x => !excludedIds.Contains(x.Id));
+                musicQuery = musicQuery.Where(x => !excludedIds.Contains(x.Id));
             }
 
             var movieCandidate = await movieQuery
@@ -408,19 +463,21 @@ public static partial class DbContextExtensions
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            DownloadQueueLeafCandidate? candidate = null;
+            var musicCandidate = await musicQuery
+                .OrderBy(x => x.CreatedAt)
+                .Select(x => new DownloadQueueLeafCandidate
+                {
+                    Id = x.Id,
+                    Type = DownloadTaskType.MusicTrackData,
+                    CreatedAt = x.CreatedAt,
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (movieCandidate is not null && episodeCandidate is not null)
-            {
-                candidate =
-                    movieCandidate.CreatedAt <= episodeCandidate.CreatedAt
-                        ? movieCandidate
-                        : episodeCandidate;
-            }
-            else
-            {
-                candidate = movieCandidate ?? episodeCandidate;
-            }
+            // Oldest queued leaf wins across all media types, so no type is starved by another.
+            var candidate = new[] { movieCandidate, episodeCandidate, musicCandidate }
+                .Where(x => x is not null)
+                .OrderBy(x => x!.CreatedAt)
+                .FirstOrDefault();
 
             if (candidate is null)
                 continue;
@@ -450,7 +507,17 @@ public static partial class DbContextExtensions
             return true;
         }
 
-        return await dbContext.DownloadTaskTvShowEpisodeFile.AnyAsync(
+        if (
+            await dbContext.DownloadTaskTvShowEpisodeFile.AnyAsync(
+                x => x.PlexServerId == plexServerId && x.DownloadStatus == DownloadStatus.Downloading,
+                cancellationToken
+            )
+        )
+        {
+            return true;
+        }
+
+        return await dbContext.DownloadTaskMusicTrackFile.AnyAsync(
             x => x.PlexServerId == plexServerId && x.DownloadStatus == DownloadStatus.Downloading,
             cancellationToken
         );
@@ -485,7 +552,17 @@ public static partial class DbContextExtensions
             return true;
         }
 
-        return await dbContext.DownloadTaskTvShowEpisodeFile.AnyAsync(
+        if (
+            await dbContext.DownloadTaskTvShowEpisodeFile.AnyAsync(
+                x => x.PlexServerId == plexServerId && statuses.Contains(x.DownloadStatus),
+                cancellationToken
+            )
+        )
+        {
+            return true;
+        }
+
+        return await dbContext.DownloadTaskMusicTrackFile.AnyAsync(
             x => x.PlexServerId == plexServerId && statuses.Contains(x.DownloadStatus),
             cancellationToken
         );
@@ -516,8 +593,17 @@ public static partial class DbContextExtensions
             .Where(x => plexServerId <= 0 || x.PlexServerId == plexServerId)
             .ToListAsync(cancellationToken);
 
+        var downloadTasksMusicArtists = await dbContext
+            .DownloadTaskMusicArtist.AsTracking(
+                asTracking ? QueryTrackingBehavior.TrackAll : QueryTrackingBehavior.NoTracking
+            )
+            .IncludeAll()
+            .Where(x => plexServerId <= 0 || x.PlexServerId == plexServerId)
+            .ToListAsync(cancellationToken);
+
         downloadTasks.AddRange(downloadTasksMovies.Select(x => x.ToGeneric()));
         downloadTasks.AddRange(downloadTasksTvShows.Select(x => x.ToGeneric()));
+        downloadTasks.AddRange(downloadTasksMusicArtists.Select(x => x.ToGeneric()));
 
         // Sort by CreatedAt
         downloadTasks.Sort((x, y) => DateTime.Compare(x.CreatedAt, y.CreatedAt));
@@ -1210,7 +1296,71 @@ public static partial class DbContextExtensions
         {
             case DownloadTaskType.Movie:
             case DownloadTaskType.TvShow:
+            case DownloadTaskType.MusicArtist:
                 return key;
+            case DownloadTaskType.MusicAlbum:
+                return await dbContext
+                    .DownloadTaskMusicAlbum.Where(x => x.Id == key.Id)
+                    .Select(x => new DownloadTaskKey
+                    {
+                        Id = x.ParentId,
+                        PlexServerId = x.PlexServerId,
+                        PlexLibraryId = x.PlexLibraryId,
+                        Type = DownloadTaskType.MusicArtist,
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
+            case DownloadTaskType.MusicTrack:
+            {
+                var album = await dbContext
+                    .DownloadTaskMusicTrack.Where(x => x.Id == key.Id)
+                    .Select(x => new
+                    {
+                        x.ParentId,
+                        x.PlexServerId,
+                        x.PlexLibraryId,
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (album is null)
+                    return null;
+
+                return await dbContext
+                    .DownloadTaskMusicAlbum.Where(x => x.Id == album.ParentId)
+                    .Select(x => new DownloadTaskKey
+                    {
+                        Id = x.ParentId,
+                        PlexServerId = album.PlexServerId,
+                        PlexLibraryId = album.PlexLibraryId,
+                        Type = DownloadTaskType.MusicArtist,
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+            case DownloadTaskType.MusicTrackData:
+            {
+                var track = await dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
+                    .Select(x => new
+                    {
+                        x.ParentId,
+                        x.PlexServerId,
+                        x.PlexLibraryId,
+                    })
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (track is null)
+                    return null;
+
+                return await dbContext.GetRootDownloadTaskKeyAsync(
+                    new DownloadTaskKey
+                    {
+                        Id = track.ParentId,
+                        PlexServerId = track.PlexServerId,
+                        PlexLibraryId = track.PlexLibraryId,
+                        Type = DownloadTaskType.MusicTrack,
+                    },
+                    cancellationToken
+                );
+            }
             case DownloadTaskType.MovieData:
             case DownloadTaskType.MoviePart:
                 return await dbContext

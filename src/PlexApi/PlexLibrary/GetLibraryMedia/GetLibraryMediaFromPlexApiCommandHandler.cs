@@ -56,8 +56,8 @@ public class GetLibraryMediaFromPlexApiCommandHandler
         // Set the default folder path id for the destination
         updatedPlexLibrary.DefaultDestinationId = updatedPlexLibrary.Type.ToDefaultDestinationFolderId();
 
-        // TODO: Handle other media types (Music, Photos, etc)
-        if (updatedPlexLibrary.Type is not (PlexMediaType.Movie or PlexMediaType.TvShow))
+        // TODO: Handle the remaining media types (Photos, etc)
+        if (updatedPlexLibrary.Type is not (PlexMediaType.Movie or PlexMediaType.TvShow or PlexMediaType.Artist))
             return Result.Ok(new LibraryMetadata(updatedPlexLibrary));
 
         await _librarySyncProgressStore.StartAsync(updatedPlexLibrary.Id, updatedPlexLibrary.Type, ct);
@@ -87,6 +87,9 @@ public class GetLibraryMediaFromPlexApiCommandHandler
                 break;
             case PlexMediaType.TvShow:
                 updatedPlexLibrary.TvShows.AddRange(mediaList.ToPlexTvShows());
+                break;
+            case PlexMediaType.Artist:
+                updatedPlexLibrary.MusicArtists.AddRange(mediaList.ToPlexMusicArtists());
                 break;
             default:
                 return Result.Fail($"Unknown PlexLibrary type: {updatedPlexLibrary.Type}").LogError();
