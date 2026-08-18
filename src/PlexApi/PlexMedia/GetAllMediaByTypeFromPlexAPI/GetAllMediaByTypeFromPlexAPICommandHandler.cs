@@ -237,6 +237,18 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
         if (!int.TryParse(libraryKey, out var libraryKeyInt))
             return ResultExtensions.IsInvalidId(nameof(libraryKey), libraryKey).LogError();
 
+        var apiMediaType = type.ToPlexApiMediaType();
+        _log.Here()
+            .Information(
+                "Requesting section {SectionId} media: PlexMediaType={PlexMediaType}, ApiMediaType={ApiMediaType} (numeric {ApiMediaTypeValue}), start={Start}, size={Size}",
+                libraryKeyInt,
+                type,
+                apiMediaType,
+                (int)apiMediaType,
+                startIndex,
+                batchSize
+            );
+
         var response = await client
             .Content.ListContentAsync(
                 new ListContentRequest
