@@ -7,4 +7,15 @@ public interface IMoveDownloadFileQueue
     /// </summary>
     /// <returns> Result with the DownloadTaskKey that was started or a warning if no DownloadTask was found. </returns>
     Task<Result> CheckMoveDownloadFileJobQueue();
+
+    /// <summary>
+    /// Records that a move for this download task failed, putting it on an exponential cooldown so
+    /// a move that can never succeed is not re-queued in a tight loop.
+    /// </summary>
+    void RegisterMoveFailure(Guid downloadTaskId);
+
+    /// <summary>
+    /// Clears any recorded failures for this download task once a move completes.
+    /// </summary>
+    void RegisterMoveSuccess(Guid downloadTaskId);
 }

@@ -83,6 +83,11 @@ public class MoveDownloadFileJob : IJob
             if (moveResult.IsFailed)
             {
                 _log.Here().Error("Failed to move all files for {DownloadTaskKey}", downloadTaskKey);
+
+                // A failed move leaves the task in MoveError, which the queue treats as a
+                // candidate again - so without a cooldown this job re-queues itself immediately
+                // and spins for as long as the underlying problem lasts.
+                _moveDownloadFileQueue.RegisterMoveFailure(downloadTaskKey.Id);
                 await QueueNextAsync();
                 return;
             }
@@ -115,8 +120,16 @@ public class MoveDownloadFileJob : IJob
                 return;
             }
 
+            if (downloadTask.DownloadStatus is not DownloadStatus.MoveFinished)
+            {
+                // The command reported success but the task did not reach MoveFinished, so it stays
+                // selectable by the queue. Treat it as a failure for backoff purposes.
+                _moveDownloadFileQueue.RegisterMoveFailure(downloadTaskKey.Id);
+            }
+
             if (downloadTask.DownloadStatus is DownloadStatus.MoveFinished)
             {
+                _moveDownloadFileQueue.RegisterMoveSuccess(downloadTaskKey.Id);
                 await _downloadTaskUpdateDispatcher.OnStatusChangedAsync(downloadTaskKey, DownloadStatus.Completed, ct);
                 // V6: Best-effort reconciliation after the file is safely in its final destination.
                 // Reconciliation failures must never turn a successful download into a failed download.
@@ -168,6 +181,10 @@ public class MoveDownloadFileJob : IJob
                     nameof(MoveDownloadFileJob),
                     downloadTaskKey
                 );
+
+            if (downloadTaskKey is not null)
+                _moveDownloadFileQueue.RegisterMoveFailure(downloadTaskKey.Id);
+
             await QueueNextAsync();
         }
     }

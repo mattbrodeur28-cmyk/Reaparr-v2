@@ -10,6 +10,12 @@ public class MoveDownloadFileJobUnitTests : BaseUnitTest<MoveDownloadFileJob>
         };
         Mock.Mock<IJobExecutionContext>().SetupGet(x => x.JobDetail.JobDataMap).Returns(new JobDataMap(dict));
         Mock.Mock<IJobExecutionContext>().SetupGet(x => x.CancellationToken).Returns(CancellationToken);
+
+        // The job records move outcomes so the queue can back a failing task off instead of
+        // re-selecting it immediately. Strict mocks need both members set up.
+        Mock.Mock<IMoveDownloadFileQueue>().Setup(x => x.RegisterMoveFailure(It.IsAny<Guid>()));
+        Mock.Mock<IMoveDownloadFileQueue>().Setup(x => x.RegisterMoveSuccess(It.IsAny<Guid>()));
+
         return Mock.Create<IJobExecutionContext>();
     }
 

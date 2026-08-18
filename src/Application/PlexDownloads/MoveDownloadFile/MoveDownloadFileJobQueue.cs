@@ -14,6 +14,16 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
     // queue checks cannot both believe the same global slots are free.
     private static readonly TimeSpan _reservationLifetime = TimeSpan.FromSeconds(15);
 
+    // A failing move stays eligible forever: the candidate query matches anything in
+    // DownloadFinished or MoveError, so a task that cannot complete is re-selected the instant it
+    // fails. That spins the mover at full speed and floods the log. Failures are counted per task
+    // and put it on an exponential cooldown so a broken move degrades quietly instead.
+    private static readonly Dictionary<Guid, MoveFailure> _moveFailures = new();
+    private static readonly TimeSpan _initialFailureCooldown = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan _maxFailureCooldown = TimeSpan.FromMinutes(30);
+
+    private sealed record MoveFailure(int Count, DateTime RetryAfterUtc);
+
     private readonly ILogger _log;
     private readonly IReaparrDbContextFactory _dbContextFactory;
     private readonly IMoveDownloadFileScheduler _moveDownloadFileScheduler;
@@ -30,6 +40,37 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
         _dbContextFactory = dbContextFactory;
         _moveDownloadFileScheduler = moveDownloadFileScheduler;
         _pathProvider = pathProvider;
+    }
+
+    /// <inheritdoc/>
+    public void RegisterMoveFailure(Guid downloadTaskId)
+    {
+        lock (_moveFailures)
+        {
+            var count = _moveFailures.TryGetValue(downloadTaskId, out var existing) ? existing.Count + 1 : 1;
+
+            // 15s, 30s, 60s ... capped at 30 minutes, so a permanently broken move settles into a
+            // slow retry while a transient failure is still retried promptly.
+            var delayTicks = _initialFailureCooldown.Ticks * (long)Math.Pow(2, Math.Min(count - 1, 10));
+            var cooldown = TimeSpan.FromTicks(Math.Min(delayTicks, _maxFailureCooldown.Ticks));
+
+            _moveFailures[downloadTaskId] = new MoveFailure(count, DateTime.UtcNow.Add(cooldown));
+
+            _log.Here()
+                .Warning(
+                    "Move for download task {DownloadTaskId} has failed {Count} time(s), not retrying for {Cooldown}",
+                    downloadTaskId,
+                    count,
+                    cooldown
+                );
+        }
+    }
+
+    /// <inheritdoc/>
+    public void RegisterMoveSuccess(Guid downloadTaskId)
+    {
+        lock (_moveFailures)
+            _moveFailures.Remove(downloadTaskId);
     }
 
     /// <inheritdoc/>
@@ -144,9 +185,21 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
                     IsDownloadFinished = x.DownloadStatus == DownloadStatus.DownloadFinished,
                 });
 
-            var blockedIds = runningIds
-                .Concat(_moveReservations.Keys)
-                .ToHashSet();
+            HashSet<Guid> cooldownIds;
+            lock (_moveFailures)
+            {
+                // Drop elapsed cooldowns so the dictionary cannot grow without bound.
+                var cooldownCutoff = DateTime.UtcNow;
+                foreach (var (failedId, failure) in _moveFailures.ToList())
+                {
+                    if (failure.RetryAfterUtc <= cooldownCutoff)
+                        _moveFailures.Remove(failedId);
+                }
+
+                cooldownIds = _moveFailures.Keys.ToHashSet();
+            }
+
+            var blockedIds = runningIds.Concat(_moveReservations.Keys).Concat(cooldownIds).ToHashSet();
 
             var candidates = await movieCandidates
                 .Concat(episodeCandidates)
