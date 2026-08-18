@@ -1,3 +1,4 @@
+using System.Text.Json;
 using LukeHagar.PlexAPI.SDK;
 using LukeHagar.PlexAPI.SDK.Models.Components;
 using LukeHagar.PlexAPI.SDK.Models.Requests;
@@ -17,18 +18,21 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
     private readonly IReaparrDbContext _dbContext;
     private readonly ILibrarySyncProgressStore _librarySyncProgressStore;
     private readonly IPlexApiClientFactory _plexApiClientFactory;
+    private readonly Func<PlexApiClientOptions?, IPlexApiClient> _rawClientFactory;
 
     public GetAllMediaByTypeFromPlexApiCommandHandler(
         ILogger log,
         IReaparrDbContext dbContext,
         ILibrarySyncProgressStore librarySyncProgressStore,
-        IPlexApiClientFactory plexApiClientFactory
+        IPlexApiClientFactory plexApiClientFactory,
+        Func<PlexApiClientOptions?, IPlexApiClient> rawClientFactory
     )
     {
         _log = log.ForContext<GetAllMediaByTypeFromPlexApiCommandHandler>();
         _dbContext = dbContext;
         _librarySyncProgressStore = librarySyncProgressStore;
         _plexApiClientFactory = plexApiClientFactory;
+        _rawClientFactory = rawClientFactory;
     }
 
     public async Task<Result<List<LibraryMediaItemDTO>>> ExecuteAsync(
@@ -95,7 +99,9 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
                 plexLibrary.Key,
                 index,
                 batchSize,
-                mediaType
+                mediaType,
+                plexServerConnection.Url,
+                tokenResult.Value
             );
             if (mediaListResult.IsFailed)
             {
@@ -170,6 +176,63 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
     /// <summary>
     /// Gets the total count of the media in the library.
     /// </summary>
+    /// <summary>
+    /// Fetches one page of tracks straight over HTTP, bypassing the SDK.
+    /// </summary>
+    /// <remarks>
+    /// Plex's section type for a track is 10. The SDK's <c>MediaType</c> enum only models values up
+    /// to 9, and its query-string serializer resolves an enum to its declared member - an unmapped
+    /// value makes it throw "Sequence contains no elements" before the request leaves the process.
+    /// The response is still deserialized into the SDK's own model so the existing
+    /// <c>ToMediaItemDTO</c> mapping is reused rather than duplicated.
+    /// </remarks>
+    private async Task<Result<List<LibraryMediaItemDTO>>> GetTrackMetadataAsync(
+        int libraryKey,
+        int startIndex,
+        int batchSize,
+        string connectionUrl,
+        string authToken
+    )
+    {
+        const int PLEX_TRACK_SECTION_TYPE = 10;
+
+        var requestUri =
+            $"{connectionUrl.TrimEnd('/')}/library/sections/{libraryKey}/all"
+            + $"?type={PLEX_TRACK_SECTION_TYPE}&includeGuids=1"
+            + $"&X-Plex-Container-Start={startIndex}&X-Plex-Container-Size={batchSize}";
+
+        using var client = _rawClientFactory(new PlexApiClientOptions { ConnectionUrl = connectionUrl, Timeout = 30 });
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.Add("X-Plex-Token", authToken);
+        request.Headers.Add("Accept", "application/json");
+
+        var response = await Result.Try(() => client.SendAsync(request));
+        if (response.IsFailed)
+            return response.ToResult();
+
+        using var httpResponse = response.Value;
+        if (!httpResponse.IsSuccessStatusCode)
+        {
+            return Result
+                .Fail($"Plex returned {(int)httpResponse.StatusCode} when listing tracks for section {libraryKey}")
+                .LogError();
+        }
+
+        var body = await httpResponse.Content.ReadAsStringAsync();
+
+        var parsed = Result.Try(() =>
+            JsonSerializer.Deserialize<MediaContainerWithMetadata>(body, DefaultJsonSerializerOptions.PlexApiSerialization)
+        );
+        if (parsed.IsFailed)
+            return parsed.ToResult();
+
+        var metadata = parsed.Value?.MediaContainer?.Metadata ?? [];
+
+        // An empty page is how the caller detects the end of the list, so it is not an error here.
+        return Result.Ok(metadata.Select(x => x.ToMediaItemDTO()).ToList());
+    }
+
     private async Task<Result<int>> GetLibraryMediaTotalCount(IPlexAPI client, string libraryKey, PlexMediaType type)
     {
         if (!int.TryParse(libraryKey, out var libraryKeyInt))
@@ -231,11 +294,21 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
         string libraryKey,
         int startIndex,
         int batchSize,
-        PlexMediaType type
+        PlexMediaType type,
+        string connectionUrl,
+        string authToken
     )
     {
         if (!int.TryParse(libraryKey, out var libraryKeyInt))
             return ResultExtensions.IsInvalidId(nameof(libraryKey), libraryKey).LogError();
+
+        // Tracks are Plex section type 10, which the SDK's MediaType enum does not model - it
+        // stops at 9. Passing an unmapped value makes the SDK throw while building the query
+        // string, before any request is sent, so this one listing goes out over raw HTTP.
+        if (type == PlexMediaType.Song)
+        {
+            return await GetTrackMetadataAsync(libraryKeyInt, startIndex, batchSize, connectionUrl, authToken);
+        }
 
         var apiMediaType = type.ToPlexApiMediaType();
         _log.Here()
