@@ -163,16 +163,6 @@ public class DownloadQueue : IDownloadQueue
             return Result.Ok();
         }
 
-        var hasDownloadingTask =
-            await dbContext.HasDownloadingDownloadTaskLeafByServerAsync(plexServerId, _token);
-
-        if (hasDownloadingTask && await _downloadTaskScheduler.IsServerDownloading(plexServerId))
-        {
-            return Result
-                .Fail("Cannot select the next download task because server is already downloading one.")
-                .LogWarning();
-        }
-
         _log.Here()
             .Debug(
                 "Checking {NameOfPlexServer}: {PlexServerName} for the next download to start",
@@ -180,16 +170,67 @@ public class DownloadQueue : IDownloadQueue
                 plexServerName
             );
 
-        var cooldownTaskIds = _retryCooldownUntil.Keys.ToArray();
-        var nextDownloadTask =
-            await dbContext.GetNextDownloadTaskLeafByServerAsync(
+        // Music has its own lane. Downloads used to be gated one-at-a-time per server across every
+        // media type, so a track sat behind whatever movie or episode was running and SoulSync
+        // timed out waiting. Each lane holds a single slot and is filled independently, so a music
+        // download can always start even while a video download is in flight.
+        var runningKeys = await _downloadTaskScheduler.GetCurrentlyDownloadingKeysByServer(plexServerId);
+
+        DownloadTaskGeneric? firstStartedTask = null;
+        var anyLaneBusy = false;
+
+        foreach (var lane in new[] { DownloadLane.Music, DownloadLane.General })
+        {
+            // A lane is busy only when the scheduler has a live job AND the database still shows a
+            // leaf downloading in that lane. Either signal alone is stale: a job can outlive its
+            // task reaching DownloadFinished, and a row can be left in Downloading with no job.
+            var laneIsBusy =
+                runningKeys.Any(x => LaneOf(x.Type) == lane)
+                && await dbContext.HasDownloadingDownloadTaskLeafByServerAsync(plexServerId, _token, lane);
+
+            if (laneIsBusy)
+            {
+                anyLaneBusy = true;
+                continue;
+            }
+
+            var cooldownTaskIds = _retryCooldownUntil.Keys.ToArray();
+            var nextDownloadTask = await dbContext.GetNextDownloadTaskLeafByServerAsync(
                 plexServerId,
                 cooldownTaskIds,
-                _token
+                _token,
+                lane
             );
 
-        if (nextDownloadTask is null)
+            if (nextDownloadTask is null)
+                continue;
+
+            _log.Here()
+                .Information(
+                    "Selected download task {NextDownloadTaskFullTitle} to start as the next task in the {Lane} lane",
+                    nextDownloadTask.FullTitle,
+                    lane
+                );
+
+            var nextDownloadTaskKey = nextDownloadTask.ToKey();
+            _retryCooldownUntil[nextDownloadTask.Id] = DateTime.UtcNow + _retryCooldown;
+            TrackStartedServerAttempt(plexServerId, nextDownloadTaskKey);
+            await _downloadTaskScheduler.StartDownloadTaskJob(nextDownloadTaskKey);
+
+            firstStartedTask ??= nextDownloadTask;
+        }
+
+        if (firstStartedTask is null)
         {
+            // Nothing started and a lane was occupied: report it the way callers already expect,
+            // rather than the "queue is empty" path.
+            if (anyLaneBusy)
+            {
+                return Result
+                    .Fail("Cannot select the next download task because server is already downloading one.")
+                    .LogWarning();
+            }
+
             if (await dbContext.HasPendingDownloadQueueWorkByServerAsync(plexServerId, _token))
             {
                 ScheduleQueueRecheck(plexServerId);
@@ -212,19 +253,16 @@ public class DownloadQueue : IDownloadQueue
             return Result.Ok();
         }
 
-        _log.Here()
-            .Information(
-                "Selected download task {NextDownloadTaskFullTitle} to start as the next task",
-                nextDownloadTask.FullTitle
-            );
-
-        var nextDownloadTaskKey = nextDownloadTask.ToKey();
-        _retryCooldownUntil[nextDownloadTask.Id] = DateTime.UtcNow + _retryCooldown;
-        TrackStartedServerAttempt(plexServerId, nextDownloadTaskKey);
-        await _downloadTaskScheduler.StartDownloadTaskJob(nextDownloadTaskKey);
-
-        return Result.Ok(nextDownloadTask);
+        return Result.Ok(firstStartedTask);
     }
+
+    /// <summary>
+    /// Maps a download task type onto its concurrency lane.
+    /// </summary>
+    private static DownloadLane LaneOf(DownloadTaskType type) =>
+        type is DownloadTaskType.MusicTrackData or DownloadTaskType.MusicTrack
+            ? DownloadLane.Music
+            : DownloadLane.General;
 
     private async Task ObservePreviousServerAttempt(
         int plexServerId,

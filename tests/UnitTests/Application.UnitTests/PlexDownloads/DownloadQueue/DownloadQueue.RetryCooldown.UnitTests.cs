@@ -18,6 +18,10 @@ public class DownloadQueueRetryCooldownUnitTests : BaseUnitTest<DownloadQueue>
         );
 
         Mock.Mock<IDownloadTaskScheduler>().Setup(x => x.StartDownloadTaskJob(It.IsAny<DownloadTaskKey>())).ReturnOk();
+        Mock.Mock<IDownloadTaskScheduler>()
+            .Setup(x => x.GetCurrentlyDownloadingKeysByServer(It.IsAny<int>()))
+            .ReturnsAsync([]);
+
         Mock.Mock<IDownloadTaskScheduler>().Setup(x => x.IsServerDownloading(It.IsAny<int>())).ReturnsAsync(false);
 
         // Act
@@ -70,6 +74,10 @@ public class DownloadQueueRetryCooldownUnitTests : BaseUnitTest<DownloadQueue>
         await IDbContext.SaveChangesAsync(CancellationToken);
 
         Mock.Mock<IDownloadTaskScheduler>().Setup(x => x.StartDownloadTaskJob(It.IsAny<DownloadTaskKey>())).ReturnOk();
+        Mock.Mock<IDownloadTaskScheduler>()
+            .Setup(x => x.GetCurrentlyDownloadingKeysByServer(It.IsAny<int>()))
+            .ReturnsAsync([]);
+
         Mock.Mock<IDownloadTaskScheduler>().Setup(x => x.IsServerDownloading(It.IsAny<int>())).ReturnsAsync(false);
 
         // Act

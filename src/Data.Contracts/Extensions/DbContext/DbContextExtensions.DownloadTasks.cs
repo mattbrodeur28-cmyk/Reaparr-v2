@@ -446,7 +446,8 @@ public static partial class DbContextExtensions
         this IReaparrDbContext dbContext,
         int plexServerId,
         IReadOnlyCollection<Guid>? excludedTaskIds = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        DownloadLane lane = DownloadLane.Any
     )
     {
         if (plexServerId <= 0)
@@ -515,6 +516,18 @@ public static partial class DbContextExtensions
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
+            // Music runs in its own lane, so a lane-scoped caller must not be handed a task
+            // belonging to the other lane - that would let one lane consume the other's slot.
+            if (lane == DownloadLane.Music)
+            {
+                movieCandidate = null;
+                episodeCandidate = null;
+            }
+            else if (lane == DownloadLane.General)
+            {
+                musicCandidate = null;
+            }
+
             // Oldest queued leaf wins across all media types, so no type is starved by another.
             var candidate = new[] { movieCandidate, episodeCandidate, musicCandidate }
                 .Where(x => x is not null)
@@ -533,11 +546,20 @@ public static partial class DbContextExtensions
     public static async Task<bool> HasDownloadingDownloadTaskLeafByServerAsync(
         this IReaparrDbContext dbContext,
         int plexServerId,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        DownloadLane lane = DownloadLane.Any
     )
     {
         if (plexServerId <= 0)
             return false;
+
+        if (lane == DownloadLane.Music)
+        {
+            return await dbContext.DownloadTaskMusicTrackFile.AnyAsync(
+                x => x.PlexServerId == plexServerId && x.DownloadStatus == DownloadStatus.Downloading,
+                cancellationToken
+            );
+        }
 
         if (
             await dbContext.DownloadTaskMovieFile.AnyAsync(
@@ -558,6 +580,9 @@ public static partial class DbContextExtensions
         {
             return true;
         }
+
+        if (lane == DownloadLane.General)
+            return false;
 
         return await dbContext.DownloadTaskMusicTrackFile.AnyAsync(
             x => x.PlexServerId == plexServerId && x.DownloadStatus == DownloadStatus.Downloading,

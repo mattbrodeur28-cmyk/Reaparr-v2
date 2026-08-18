@@ -2,7 +2,7 @@ namespace Reaparr.Application;
 
 public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
 {
-    private sealed record MoveReservation(int PlexServerId, DateTime ExpiresAtUtc);
+    private sealed record MoveReservation(int PlexServerId, DateTime ExpiresAtUtc, DownloadTaskType Type);
 
     // A static gate keeps move admission serialized even if the queue is ever resolved
     // more than once by dependency injection.
@@ -19,6 +19,9 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
     // fails. That spins the mover at full speed and floods the log. Failures are counted per task
     // and put it on an exponential cooldown so a broken move degrades quietly instead.
     private static readonly Dictionary<Guid, MoveFailure> _moveFailures = new();
+    // Music always keeps one mover slot of its own, on top of the configured general cap.
+    private const int _musicMoverSlots = 1;
+
     private static readonly TimeSpan _initialFailureCooldown = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan _maxFailureCooldown = TimeSpan.FromMinutes(30);
 
@@ -41,6 +44,14 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
         _moveDownloadFileScheduler = moveDownloadFileScheduler;
         _pathProvider = pathProvider;
     }
+
+    /// <summary>
+    /// Maps a download task type onto its concurrency lane.
+    /// </summary>
+    private static DownloadLane LaneOf(DownloadTaskType type) =>
+        type is DownloadTaskType.MusicTrackData or DownloadTaskType.MusicTrack
+            ? DownloadLane.Music
+            : DownloadLane.General;
 
     /// <inheritdoc/>
     public void RegisterMoveFailure(Guid downloadTaskId)
@@ -126,14 +137,29 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
             }
 
             var activeMoverCount = runningKeys.Count + _moveReservations.Count;
-            if (activeMoverCount >= maxMovers)
+
+            // Music movers are counted separately and given their own always-available slot on top
+            // of the general cap. Under the shared cap a finished track could sit behind several
+            // large video moves for minutes, which SoulSync reads as a timeout.
+            var activeMusicMovers =
+                runningKeys.Count(x => LaneOf(x.Type) == DownloadLane.Music)
+                + _moveReservations.Values.Count(x => LaneOf(x.Type) == DownloadLane.Music);
+            var activeGeneralMovers = activeMoverCount - activeMusicMovers;
+
+            var generalSlots = Math.Max(0, maxMovers - activeGeneralMovers);
+            var musicSlots = Math.Max(0, _musicMoverSlots - activeMusicMovers);
+
+            if (generalSlots == 0 && musicSlots == 0)
             {
                 _log.Here()
                     .Debug(
-                        "Move concurrency cap reached: {ActiveMoverCount}/{MaxMovers}. "
+                        "Move concurrency cap reached: {ActiveMoverCount}/{MaxMovers} general "
+                        + "and {ActiveMusicMovers}/{MusicMoverSlots} music. "
                         + "Finished downloads will remain queued for moving.",
-                        activeMoverCount,
-                        maxMovers
+                        activeGeneralMovers,
+                        maxMovers,
+                        activeMusicMovers,
+                        _musicMoverSlots
                     );
                 return Result.Ok();
             }
@@ -216,11 +242,18 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
                 return Result.Ok();
             }
 
-            var freeSlots = maxMovers - activeMoverCount;
             var scheduledCount = 0;
 
-            while (freeSlots > 0 && candidates.Count > 0)
+            while ((generalSlots > 0 || musicSlots > 0) && candidates.Count > 0)
             {
+                // Only consider candidates whose own lane still has a slot.
+                var laneEligible = candidates
+                    .Where(x => LaneOf(x.Type) == DownloadLane.Music ? musicSlots > 0 : generalSlots > 0)
+                    .ToList();
+
+                if (laneEligible.Count == 0)
+                    break;
+
                 // Fair-share admission:
                 // 1. Prefer the Plex server with the fewest active movers.
                 // 2. Within that fairness tier prefer fresh DownloadFinished work.
@@ -228,7 +261,7 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
                 //
                 // With a cap of 4 and two busy servers this naturally tends toward 2 + 2.
                 // If only one server has work, it can use all four slots.
-                var next = candidates
+                var next = laneEligible
                     .OrderBy(x => activeByServer.GetValueOrDefault(x.PlexServerId))
                     .ThenByDescending(x => x.IsDownloadFinished)
                     .ThenBy(x => x.CreatedAt)
@@ -259,14 +292,18 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
 
                 _moveReservations[key.Id] = new MoveReservation(
                     key.PlexServerId,
-                    DateTime.UtcNow + _reservationLifetime
+                    DateTime.UtcNow + _reservationLifetime,
+                    key.Type
                 );
 
                 activeByServer[key.PlexServerId] =
                     activeByServer.GetValueOrDefault(key.PlexServerId) + 1;
 
                 scheduledCount++;
-                freeSlots--;
+                if (LaneOf(key.Type) == DownloadLane.Music)
+                    musicSlots--;
+                else
+                    generalSlots--;
 
                 _log.Here()
                     .Information(

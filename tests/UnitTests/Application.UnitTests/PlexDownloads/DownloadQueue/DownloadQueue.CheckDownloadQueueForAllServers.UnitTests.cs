@@ -18,6 +18,10 @@ public class DownloadQueueCheckDownloadQueueForAllServersUnitTests : BaseUnitTes
         );
 
         Mock.Mock<IDownloadTaskScheduler>().Setup(x => x.StartDownloadTaskJob(It.IsAny<DownloadTaskKey>())).ReturnOk();
+        Mock.Mock<IDownloadTaskScheduler>()
+            .Setup(x => x.GetCurrentlyDownloadingKeysByServer(It.IsAny<int>()))
+            .ReturnsAsync([]);
+
         Mock.Mock<IDownloadTaskScheduler>().Setup(x => x.IsServerDownloading(It.IsAny<int>())).ReturnsAsync(false);
 
         Sut.Setup();
