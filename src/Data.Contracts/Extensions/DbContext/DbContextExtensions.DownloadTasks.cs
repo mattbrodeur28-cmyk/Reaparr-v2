@@ -346,6 +346,34 @@ public static partial class DbContextExtensions
                         .Select(x => x.DownloadStatus)
                         .FirstOrDefaultAsync(cancellationToken);
 
+                case DownloadTaskType.MusicArtist:
+                    return await dbContext
+                        .DownloadTaskMusicArtist.Where(x => x.Id == key.Id)
+                        .Take(1)
+                        .Select(x => x.DownloadStatus)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                case DownloadTaskType.MusicAlbum:
+                    return await dbContext
+                        .DownloadTaskMusicAlbum.Where(x => x.Id == key.Id)
+                        .Take(1)
+                        .Select(x => x.DownloadStatus)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                case DownloadTaskType.MusicTrack:
+                    return await dbContext
+                        .DownloadTaskMusicTrack.Where(x => x.Id == key.Id)
+                        .Take(1)
+                        .Select(x => x.DownloadStatus)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                case DownloadTaskType.MusicTrackData:
+                    return await dbContext
+                        .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
+                        .Take(1)
+                        .Select(x => x.DownloadStatus)
+                        .FirstOrDefaultAsync(cancellationToken);
+
                 default:
                     _log.Here()
                         .Error(
@@ -386,6 +414,12 @@ public static partial class DbContextExtensions
             case DownloadTaskType.EpisodePart:
                 return await dbContext
                     .DownloadTaskTvShowEpisodeFile.Include(x => x.PlexServer)
+                    .Include(x => x.PlexLibrary)
+                    .FirstOrDefaultAsync(x => x.Id == key.Id, cancellationToken);
+
+            case DownloadTaskType.MusicTrackData:
+                return await dbContext
+                    .DownloadTaskMusicTrackFile.Include(x => x.PlexServer)
                     .Include(x => x.PlexLibrary)
                     .FirstOrDefaultAsync(x => x.Id == key.Id, cancellationToken);
             default:
