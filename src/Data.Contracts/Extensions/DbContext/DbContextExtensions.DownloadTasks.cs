@@ -924,10 +924,27 @@ public static partial class DbContextExtensions
                         cancellationToken
                     );
                 break;
+            case DownloadTaskType.MusicTrackData:
+                await dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(
+                        p =>
+                            p.SetProperty(x => x.DownloadSpeed, progress.DownloadSpeed)
+                                .SetProperty(x => x.DataReceived, progress.DataReceived)
+                                .SetProperty(x => x.DataTotal, progress.DataTotal)
+                                .SetProperty(x => x.Percentage, progress.Percentage)
+                                .SetProperty(x => x.TimeRemaining, progress.TimeRemaining)
+                                .SetProperty(x => x.DirectDownloadSnapshot, snapshot),
+                        cancellationToken
+                    );
+                break;
             case DownloadTaskType.Movie:
             case DownloadTaskType.TvShow:
             case DownloadTaskType.Season:
             case DownloadTaskType.Episode:
+            case DownloadTaskType.MusicArtist:
+            case DownloadTaskType.MusicAlbum:
+            case DownloadTaskType.MusicTrack:
                 _log.Here()
                     .Error(
                         "{Name} of type {Type} is not supported in {MethodName}",
@@ -986,10 +1003,30 @@ public static partial class DbContextExtensions
                         cancellationToken
                     );
                 break;
+            case DownloadTaskType.MusicTrackData:
+                await dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(
+                        p =>
+                            p.SetProperty(x => x.DownloadSpeed, 0)
+                                .SetProperty(x => x.DataReceived, 0)
+                                .SetProperty(x => x.Percentage, 0)
+                                .SetProperty(x => x.TimeRemaining, 0)
+                                .SetProperty(x => x.FileTransferSpeed, 0)
+                                .SetProperty(x => x.FileDataTransferred, 0)
+                                .SetProperty(x => x.CurrentFileTransferBytesOffset, 0)
+                                .SetProperty(x => x.DirectDownloadSnapshot, (DirectDownloadSnapshot?)null)
+                                .SetProperty(x => x.DownloadStatus, downloadStatus),
+                        cancellationToken
+                    );
+                break;
             case DownloadTaskType.Movie:
             case DownloadTaskType.TvShow:
             case DownloadTaskType.Season:
             case DownloadTaskType.Episode:
+            case DownloadTaskType.MusicArtist:
+            case DownloadTaskType.MusicAlbum:
+            case DownloadTaskType.MusicTrack:
                 return _log.Here()
                     .ErrorResult(
                         "{Name} of type {Type} is not supported in {MethodName}",
@@ -1085,10 +1122,34 @@ public static partial class DbContextExtensions
                         cancellationToken
                     );
                 break;
+            case DownloadTaskType.MusicTrackData:
+                await dbContext
+                    .DownloadTaskMusicTrackFile.Where(x => x.Id == key.Id)
+                    .ExecuteUpdateAsync(
+                        p =>
+                            p.SetProperty(x => x.FileTransferSpeed, progress.FileTransferSpeed)
+                                .SetProperty(x => x.FileDataTransferred, progress.FileDataTransferred)
+                                .SetProperty(
+                                    x => x.CurrentFileTransferBytesOffset,
+                                    progress.CurrentFileTransferBytesOffset
+                                )
+                                .SetProperty(
+                                    x => x.Percentage,
+                                    x =>
+                                        x.DataTotal > 0
+                                            ? progress.CurrentFileTransferBytesOffset * 100m / x.DataTotal
+                                            : 0m
+                                ),
+                        cancellationToken
+                    );
+                break;
             case DownloadTaskType.Movie:
             case DownloadTaskType.TvShow:
             case DownloadTaskType.Season:
             case DownloadTaskType.Episode:
+            case DownloadTaskType.MusicArtist:
+            case DownloadTaskType.MusicAlbum:
+            case DownloadTaskType.MusicTrack:
                 _log.Here()
                     .Error(
                         "{Name} of type {Type} is not supported in {MethodName}",
