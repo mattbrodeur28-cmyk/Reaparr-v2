@@ -227,16 +227,15 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
 
         var body = await httpResponse.Content.ReadAsStringAsync();
 
-        var parsed = Result.Try(() =>
-            JsonSerializer.Deserialize<MediaContainerWithMetadata>(body, DefaultJsonSerializerOptions.PlexApiSerialization)
-        );
+        // Parsed by hand rather than into the SDK's models: those are stricter than Plex's real
+        // output and their converters are internal, so a plain deserialize fails on 1/0 booleans,
+        // guid-as-array, and union-typed fields. See PlexJsonMediaItemParser.
+        var parsed = Result.Try(() => PlexJsonMediaItemParser.ParseMediaItems(body));
         if (parsed.IsFailed)
             return parsed.ToResult();
 
-        var metadata = parsed.Value?.MediaContainer?.Metadata ?? [];
-
         // An empty page is how the caller detects the end of the list, so it is not an error here.
-        return Result.Ok(metadata.Select(x => x.ToMediaItemDTO()).ToList());
+        return Result.Ok(parsed.Value);
     }
 
     private async Task<Result<int>> GetLibraryMediaTotalCount(IPlexAPI client, string libraryKey, PlexMediaType type)
