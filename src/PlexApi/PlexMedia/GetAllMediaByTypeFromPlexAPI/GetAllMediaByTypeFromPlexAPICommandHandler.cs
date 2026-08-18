@@ -70,18 +70,25 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
             return totalSizeResult.ToResult();
 
         var totalSize = totalSizeResult.Value;
-        if (totalSize == 0)
+
+        // Plex does not report totalSize for every section type - music (artist) sections omit it
+        // entirely. A zero here therefore means "unknown", not "empty", so instead of giving up we
+        // page until a batch comes back short. isTotalKnown keeps the progress reporting honest.
+        var isTotalKnown = totalSize > 0;
+        if (!isTotalKnown)
         {
             _log.Here()
-                .Warning("The library with name: {PlexLibraryName} contains no media to retrieve", plexLibrary.Name);
-            return Result.Ok(mediaList);
+                .Information(
+                    "Plex reported no total size for library {PlexLibraryName}, paging until exhausted",
+                    plexLibrary.Name
+                );
         }
 
         // Retrieve the media for this library
         var startTime = DateTime.UtcNow; // Start time for estimation
         var progressIndex = 0;
 
-        for (var index = 0; index < totalSize; index += batchSize)
+        for (var index = 0; isTotalKnown ? index < totalSize : true; index += batchSize)
         {
             var mediaListResult = await GetMetadataForLibraryAsync(
                 client,
@@ -92,6 +99,11 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
             );
             if (mediaListResult.IsFailed)
             {
+                // With an unknown total, an empty page is how the end of the list announces
+                // itself rather than a real failure - anything already collected still counts.
+                if (!isTotalKnown && mediaList.Any())
+                    break;
+
                 var result = mediaListResult.ToResult();
                 result.LogError();
                 return result;
@@ -101,7 +113,11 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
             progressIndex += rawMediaList.Count;
 
             mediaList.AddRange(rawMediaList);
-            await SendProgress(plexLibrary.Id, mediaType, startTime, progressIndex, totalSize);
+            await SendProgress(plexLibrary.Id, mediaType, startTime, progressIndex, isTotalKnown ? totalSize : progressIndex);
+
+            // A short page means there is nothing after it.
+            if (!isTotalKnown && rawMediaList.Count < batchSize)
+                break;
 
             if (ct.IsCancellationRequested)
             {
