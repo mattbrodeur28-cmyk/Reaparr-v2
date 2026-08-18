@@ -179,13 +179,22 @@ public class DownloadQueue : IDownloadQueue
         DownloadTaskGeneric? firstStartedTask = null;
         var anyLaneBusy = false;
 
-        foreach (var lane in new[] { DownloadLane.Music, DownloadLane.General })
+        // Splitting downloads into lanes raises per-server concurrency from one to two, but
+        // StartDownloadTaskCommand still enforces a one-download-per-server invariant by pausing
+        // every other active download - and PauseDownloadTaskCommand cascades to descendants.
+        // The two fight, and every task thrashes Downloading -> Paused. Disabled until that
+        // invariant is lane-aware; the mover lane is unaffected and stays on.
+        var lanes = _musicDownloadLaneEnabled
+            ? new[] { DownloadLane.Music, DownloadLane.General }
+            : [DownloadLane.Any];
+
+        foreach (var lane in lanes)
         {
             // A lane is busy only when the scheduler has a live job AND the database still shows a
             // leaf downloading in that lane. Either signal alone is stale: a job can outlive its
             // task reaching DownloadFinished, and a row can be left in Downloading with no job.
             var laneIsBusy =
-                runningKeys.Any(x => LaneOf(x.Type) == lane)
+                runningKeys.Any(x => lane == DownloadLane.Any || LaneOf(x.Type) == lane)
                 && await dbContext.HasDownloadingDownloadTaskLeafByServerAsync(plexServerId, _token, lane);
 
             if (laneIsBusy)
@@ -259,6 +268,12 @@ public class DownloadQueue : IDownloadQueue
     /// <summary>
     /// Maps a download task type onto its concurrency lane.
     /// </summary>
+    /// <summary>
+    /// Whether music downloads get their own concurrency lane. Off until the one-download-per-server
+    /// invariant in StartDownloadTaskCommand is made lane-aware.
+    /// </summary>
+    private const bool _musicDownloadLaneEnabled = false;
+
     private static DownloadLane LaneOf(DownloadTaskType type) =>
         type is DownloadTaskType.MusicTrackData or DownloadTaskType.MusicTrack
             ? DownloadLane.Music
