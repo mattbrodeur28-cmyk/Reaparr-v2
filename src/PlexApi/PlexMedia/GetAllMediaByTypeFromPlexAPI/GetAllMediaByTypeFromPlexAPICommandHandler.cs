@@ -174,14 +174,33 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
         if (response.IsFailed)
             return response.ToResult();
 
-        var mediaContainer = response.Value?.MediaContainerWithMetadata?.MediaContainer;
+        var rawValue = response.Value?.MediaContainerWithMetadata?.MediaContainer?.TotalSize ?? 0;
 
-        // Plex does not always return totalSize. Music (artist) sections answer with only a
-        // "size" attribute, so relying on totalSize alone reports an empty library and the sync
-        // silently stops before fetching anything. Fall back to size when totalSize is absent.
-        var rawValue = mediaContainer?.TotalSize ?? 0;
+        // Plex does not always return totalSize. Music (artist) sections answer without it, and
+        // because the request above asks for a zero-sized container, "size" is 0 as well - so
+        // there is nothing useful to read. Re-query without the container paging parameters and
+        // count what comes back, which is the only way to learn the real size for those sections.
         if (rawValue <= 0)
-            rawValue = mediaContainer?.Size ?? 0;
+        {
+            var unpagedResponse = await client
+                .Content.ListContentAsync(
+                    new ListContentRequest
+                    {
+                        SectionId = libraryKeyInt.ToString(),
+                        MediaQuery = new MediaQuery { Type = type.ToPlexApiMediaType() },
+                    }
+                )
+                .ToResponse();
+
+            if (unpagedResponse.IsFailed)
+                return unpagedResponse.ToResult();
+
+            var unpagedContainer = unpagedResponse.Value?.MediaContainerWithMetadata?.MediaContainer;
+            rawValue = unpagedContainer?.TotalSize ?? unpagedContainer?.Size ?? 0;
+
+            if (rawValue <= 0)
+                rawValue = unpagedContainer?.Metadata?.Count ?? 0;
+        }
 
         var safeValue = (int)Math.Max(0, Math.Min(rawValue, int.MaxValue));
         return Result.Ok(safeValue);
