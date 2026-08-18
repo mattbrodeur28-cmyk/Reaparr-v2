@@ -207,8 +207,9 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
             return;
         }
 
-        // Set the hashId on the created download tasks so Sonarr/Radarr can keep track
-        await SetHashIdOnDownloadTask(metadata, hashId);
+        // Set the hashId on the created download tasks so Sonarr/Radarr can keep track, and record
+        // the category the client used so /torrents/info can echo it back to them.
+        await SetHashIdOnDownloadTask(metadata, hashId, req.Category);
 
         // qBittorrent's /torrents/add answers a bare "Ok." with no hash, which forces a client to
         // recover it by diffing /torrents/info around the add - racy, and only safe while a single
@@ -231,7 +232,7 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
         HttpContext.Request.Headers.TryGetValue(REAPARR_CLIENT_HEADER, out var value)
         && !string.IsNullOrWhiteSpace(value.ToString());
 
-    private async Task SetHashIdOnDownloadTask(TorrentMetadataDTO metaData, string hashId)
+    private async Task SetHashIdOnDownloadTask(TorrentMetadataDTO metaData, string hashId, string? category)
     {
         var count = 0;
         switch (metaData.Type)
@@ -243,7 +244,9 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
                         && x.PlexServerId == metaData.ServerId
                         && x.PlexApiPartId == metaData.PlexApiPartId
                     )
-                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.HashId, hashId));
+                    .ExecuteUpdateAsync(p =>
+                        p.SetProperty(x => x.HashId, hashId).SetProperty(x => x.DownloadClientCategory, category)
+                    );
                 break;
             case PlexMediaType.Movie:
                 count = await _dbContext
@@ -252,7 +255,9 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
                         && x.PlexServerId == metaData.ServerId
                         && x.PlexApiPartId == metaData.PlexApiPartId
                     )
-                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.HashId, hashId));
+                    .ExecuteUpdateAsync(p =>
+                        p.SetProperty(x => x.HashId, hashId).SetProperty(x => x.DownloadClientCategory, category)
+                    );
                 break;
             case PlexMediaType.Song:
                 count = await _dbContext
@@ -261,7 +266,9 @@ public class AddTorrentEndpoint : Endpoint<AddTorrentEndpointRequest>
                         && x.PlexServerId == metaData.ServerId
                         && x.PlexApiPartId == metaData.PlexApiPartId
                     )
-                    .ExecuteUpdateAsync(p => p.SetProperty(x => x.HashId, hashId));
+                    .ExecuteUpdateAsync(p =>
+                        p.SetProperty(x => x.HashId, hashId).SetProperty(x => x.DownloadClientCategory, category)
+                    );
                 break;
             default:
                 _log.Here()

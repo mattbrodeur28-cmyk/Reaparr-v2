@@ -224,6 +224,14 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
 
     private static string ResolveCategory(DownloadTaskFileBase file)
     {
+        // Echo back whatever the client used when it added the download. Clients filter
+        // /torrents/info by their own category and only recognise a transfer when the same value
+        // comes back, so assuming Reaparr's defaults hides downloads from anything that picks its
+        // own - SoulSync uses "soulsync". Downloads started inside Reaparr have none and fall
+        // through to the media-type default below.
+        if (!string.IsNullOrWhiteSpace(file.DownloadClientCategory))
+            return file.DownloadClientCategory;
+
         return file.MediaType switch
         {
             PlexMediaType.Movie => IntegrationDefinitions.RADARR_DEFAULT_CATEGORY,

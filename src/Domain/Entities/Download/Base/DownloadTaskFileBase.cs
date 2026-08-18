@@ -34,6 +34,18 @@ public abstract class DownloadTaskFileBase : DownloadTaskBase, IDownloadTaskProg
     public required string? HashId { get; init; }
 
     /// <summary>
+    /// The download-client category the requesting client used when it added this download.
+    /// </summary>
+    /// <remarks>
+    /// Clients poll /torrents/info filtered by their own category and only recognise their
+    /// transfers if the same value comes back. Sonarr and Radarr use Reaparr's defaults, but
+    /// anything else - SoulSync uses "soulsync" - picks its own, so the value sent on
+    /// /torrents/add is recorded here and echoed back rather than assumed.
+    /// Null for downloads started inside Reaparr, which fall back to the media-type default.
+    /// </remarks>
+    public string? DownloadClientCategory { get; set; }
+
+    /// <summary>
     /// Gets or sets get or sets the media quality of this <see cref="DownloadTaskGeneric"/>.
     /// </summary>
     [Column(Order = 13)]
