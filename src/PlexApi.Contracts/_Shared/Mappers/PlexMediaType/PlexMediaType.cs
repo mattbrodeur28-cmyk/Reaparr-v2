@@ -40,9 +40,13 @@ public static class PlexMediaTypeMappers
             PlexMediaType.TvShow => MediaType.TvShow,
             PlexMediaType.Season => MediaType.Season,
             PlexMediaType.Episode => MediaType.Episode,
-            PlexMediaType.Artist => MediaType.Artist,
-            PlexMediaType.Album => MediaType.Album,
-            PlexMediaType.Song => MediaType.Track,
+            // The SDK's MediaType enum is sequential (Artist = 5), but Plex's own section type
+            // ids are not: artist = 8, album = 9, track = 10. Movie/show/season/episode line up
+            // by coincidence, which is why only music was ever rejected - Plex answers 400 to
+            // type=5 on a music section. Cast the real Plex id so the wire value is correct.
+            PlexMediaType.Artist => (MediaType)8,
+            PlexMediaType.Album => (MediaType)9,
+            PlexMediaType.Song => (MediaType)10,
             PlexMediaType.PhotoAlbum => MediaType.PhotoAlbum,
             PlexMediaType.Photos => MediaType.Photo,
             _ => throw new ArgumentOutOfRangeException(nameof(source), source, "Unsupported PlexMediaType"),
