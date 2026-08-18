@@ -70,10 +70,14 @@ public class GetCapabilitiesCommandHandler : ICommandHandler<GetCapabilitiesComm
                 new TorznabCategory(3030, "Audio/Audiobook"),
                 new TorznabCategory(3040, "Audio/Lossless"),
                 // TV
+                // Labels follow the Torznab standard and TorznabCategoryId: 5030 is SD and 5040 is
+                // HD. These were previously swapped, and 5045 (UHD) - which ToTorznabEpisodeCategory
+                // actually emits - was not advertised at all, so UHD episodes were filtered out.
                 new TorznabCategory(5000, "TV"),
-                new TorznabCategory(5030, "TV/HD"),
-                new TorznabCategory(5040, "TV/SD"),
-                new TorznabCategory(5050, "TV/UHD"),
+                new TorznabCategory(5030, "TV/SD"),
+                new TorznabCategory(5040, "TV/HD"),
+                new TorznabCategory(5045, "TV/UHD"),
+                new TorznabCategory(5050, "TV/Other"),
                 new TorznabCategory(5070, "TV/Anime"),
                 new TorznabCategory(5080, "TV/Documentary"),
                 new TorznabCategory(5090, "TV/Foreign"),

@@ -127,6 +127,10 @@ public class RefreshLibraryMediaCommandUnitTests : BaseCommandUnitTest<RefreshLi
                 break;
         }
 
+        // A completed library sync queues the follow-up metadata pass, which is what fills in the
+        // stream specs and the generated release name Sonarr/Radarr parse.
+        Mock.SetupCommand(It.IsAny<QueueMetadataSyncCommand>).ReturnsAsync(Result.Ok()).Verifiable(Times.Once());
+
         // Act
         var command = new RefreshLibraryMediaCommand(updatedLibrary.Id);
         var result = await TestHandlerExecuteAsync<PlexLibrary>(command);

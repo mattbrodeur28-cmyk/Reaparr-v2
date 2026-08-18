@@ -109,6 +109,18 @@ public class RefreshLibraryMediaCommandHandler : ICommandHandler<RefreshLibraryM
         if (syncedLibrary is null)
             return ResultExtensions.EntityNotFound(nameof(PlexLibrary), command.PlexLibraryId);
 
+        // The section listing Plex returns for a library carries no stream details, so the media
+        // rows land without codec/resolution specifics and without a generated release name.
+        // Sonarr and Radarr parse those specs out of the release title, so without this follow-up
+        // pass every release is offered under its raw Plex filename and is usually rejected as
+        // unparseable. The job fetches detail metadata in batches and fills both in.
+        var queueMetadataResult = await _commandExecutor.Send(
+            new QueueMetadataSyncCommand(syncedLibrary.PlexServerId),
+            ct
+        );
+        if (queueMetadataResult.IsFailed)
+            queueMetadataResult.LogError();
+
         return Result.Ok(syncedLibrary);
     }
 }

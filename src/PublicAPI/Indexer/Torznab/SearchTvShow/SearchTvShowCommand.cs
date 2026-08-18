@@ -236,6 +236,14 @@ public class SearchTvShowCommandHandler : ICommandHandler<SearchTvShowCommand, R
             item.Attributes.Add(new TorznabAttr("language", "English"));
             item.Attributes.Add(new TorznabAttr("downloadvolumefactor", "0.0"));
 
+            // Sonarr drops any release whose category is not in its configured list, and a release
+            // with no category at all never matches - which is why TV grabs never happened.
+            item.Attributes.Add(new TorznabAttr("category", mediaData.ToTorznabEpisodeCategory().ToString()));
+            item.Attributes.Add(new TorznabAttr("resolution", mediaData.VideoResolution.ToResolutionLabel()));
+            item.Attributes.Add(new TorznabAttr("source", mediaData.Source.ToEnumMemberValue()));
+            item.Attributes.Add(new TorznabAttr("videoCodec", mediaData.VideoCodec));
+            item.Attributes.Add(new TorznabAttr("audioCodec", mediaData.AudioCodec));
+
             if (tvShow.Guid_TVDB is not null)
                 item.Attributes.Add(new TorznabAttr("tvdbid", tvShow.Guid_TVDB.Value.ToString()));
 

@@ -147,7 +147,12 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
             .Include(x => x.Parent)
             .ToListAsync(ct);
 
-        await Task.WhenAll(episodeFilesTask, movieFilesTask);
+        var musicFilesTask = dbContext
+            .DownloadTaskMusicTrackFile.Where(x => x.HashId != null && nonOwnedServerIds.Contains(x.PlexServerId))
+            .Include(x => x.Parent)
+            .ToListAsync(ct);
+
+        await Task.WhenAll(episodeFilesTask, movieFilesTask, musicFilesTask);
 
         var episodeInfos = episodeFilesTask
             .Result
@@ -159,10 +164,18 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
             .Where(x => MatchesFilters(x, hashesFilter, categoryFilter))
             .Select(MapToTorrentInfo)
             .ToList();
+        var musicInfos = musicFilesTask
+            .Result
+            .Where(x => MatchesFilters(x, hashesFilter, categoryFilter))
+            .Select(MapToTorrentInfo)
+            .ToList();
 
-        var torrents = new List<QBittorrentTorrentInfo>(episodeInfos.Count + movieInfos.Count);
+        var torrents = new List<QBittorrentTorrentInfo>(
+            episodeInfos.Count + movieInfos.Count + musicInfos.Count
+        );
         torrents.AddRange(episodeInfos);
         torrents.AddRange(movieInfos);
+        torrents.AddRange(musicInfos);
 
         await Send.OkAsync(torrents, ct);
     }
@@ -215,6 +228,10 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
         {
             PlexMediaType.Movie => IntegrationDefinitions.RADARR_DEFAULT_CATEGORY,
             PlexMediaType.Episode => IntegrationDefinitions.SONARR_DEFAULT_CATEGORY,
+
+            // Music arrives from clients such as SoulSync, which poll /torrents/info filtered by
+            // their own category. Returning an empty category made their transfers invisible.
+            PlexMediaType.Song => IntegrationDefinitions.MUSIC_DEFAULT_CATEGORY,
             _ => string.Empty,
         };
     }
