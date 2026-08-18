@@ -44,6 +44,10 @@ public static partial class DbContextExtensions
             dbContext.DownloadTaskTvShowEpisodeFile.ProjectToKey(),
             dbContext.DownloadTaskMovie.ProjectToKey(),
             dbContext.DownloadTaskMovieFile.ProjectToKey(),
+            dbContext.DownloadTaskMusicArtist.ProjectToKey(),
+            dbContext.DownloadTaskMusicAlbum.ProjectToKey(),
+            dbContext.DownloadTaskMusicTrack.ProjectToKey(),
+            dbContext.DownloadTaskMusicTrackFile.ProjectToKey(),
         };
 
         foreach (var query in queries)
@@ -80,6 +84,10 @@ public static partial class DbContextExtensions
             dbContext.DownloadTaskTvShowEpisodeFile.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
             dbContext.DownloadTaskMovie.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
             dbContext.DownloadTaskMovieFile.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
+            dbContext.DownloadTaskMusicArtist.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
+            dbContext.DownloadTaskMusicAlbum.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
+            dbContext.DownloadTaskMusicTrack.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
+            dbContext.DownloadTaskMusicTrackFile.Where(x => filtered.Contains(x.Id)).ProjectToKey(),
         };
 
         var keys = new List<DownloadTaskKey>();
@@ -1301,6 +1309,27 @@ public static partial class DbContextExtensions
             )
             .ExecuteDeleteAsync(ct);
 
+        // Music mirrors the TV chain: artist -> album -> track -> track file. Deepest first so a
+        // parent is only considered orphaned once its children are gone.
+        totalRowsDeleted += await dbContext
+            .DownloadTaskMusicTrack.Where(x =>
+                rootIds.Contains(x.Parent!.ParentId)
+                && !dbContext.DownloadTaskMusicTrackFile.Any(y => y.ParentId == x.Id)
+            )
+            .ExecuteDeleteAsync(ct);
+
+        totalRowsDeleted += await dbContext
+            .DownloadTaskMusicAlbum.Where(x =>
+                rootIds.Contains(x.ParentId) && !dbContext.DownloadTaskMusicTrack.Any(y => y.ParentId == x.Id)
+            )
+            .ExecuteDeleteAsync(ct);
+
+        totalRowsDeleted += await dbContext
+            .DownloadTaskMusicArtist.Where(x =>
+                rootIds.Contains(x.Id) && !dbContext.DownloadTaskMusicAlbum.Any(y => y.ParentId == x.Id)
+            )
+            .ExecuteDeleteAsync(ct);
+
         return totalRowsDeleted;
     }
 
@@ -1313,57 +1342,49 @@ public static partial class DbContextExtensions
         if (downloadTaskIds.Count == 0)
             return [];
 
-        var movieRootIdsTask = dbContext
+        // Awaited one at a time on purpose: a DbContext cannot serve overlapping operations, and
+        // the store is a single SQLite file so there is no parallelism to win by starting them
+        // together. ToListAsync starts immediately, so holding the Tasks and awaiting later would
+        // still overlap.
+        var movieRootIds = await dbContext
             .DownloadTaskMovie.Where(x => downloadTaskIds.Contains(x.Id))
             .Select(x => x.Id)
             .ToListAsync(ct);
 
-        var movieFileRootIdsTask = dbContext
+        var movieFileRootIds = await dbContext
             .DownloadTaskMovieFile.Where(x => downloadTaskIds.Contains(x.Id))
             .Select(x => x.ParentId)
             .ToListAsync(ct);
 
-        var tvShowRootIdsTask = dbContext
+        var tvShowRootIds = await dbContext
             .DownloadTaskTvShow.Where(x => downloadTaskIds.Contains(x.Id))
             .Select(x => x.Id)
             .ToListAsync(ct);
 
-        var seasonRootIdsTask = dbContext
+        var seasonParentIds = await dbContext
             .DownloadTaskTvShowSeason.Where(x => downloadTaskIds.Contains(x.Id))
             .Select(x => x.ParentId)
             .ToListAsync(ct);
 
-        var episodeSeasonIdsTask = dbContext
+        var episodeSeasonIds = await dbContext
             .DownloadTaskTvShowEpisode.Where(x => downloadTaskIds.Contains(x.Id))
             .Select(x => x.ParentId)
             .ToListAsync(ct);
 
-        var episodeFileEpisodeIdsTask = dbContext
+        var episodeFileEpisodeIds = await dbContext
             .DownloadTaskTvShowEpisodeFile.Where(x => downloadTaskIds.Contains(x.Id))
             .Select(x => x.ParentId)
             .ToListAsync(ct);
 
-        await Task.WhenAll(
-            movieRootIdsTask,
-            movieFileRootIdsTask,
-            tvShowRootIdsTask,
-            seasonRootIdsTask,
-            episodeSeasonIdsTask,
-            episodeFileEpisodeIdsTask
-        );
-
         var rootIds = new HashSet<Guid>(
-            movieRootIdsTask
-                .Result.Concat(movieFileRootIdsTask.Result)
-                .Concat(tvShowRootIdsTask.Result)
-                .Concat(seasonRootIdsTask.Result)
+            movieRootIds.Concat(movieFileRootIds).Concat(tvShowRootIds).Concat(seasonParentIds)
         );
 
-        var seasonIds = episodeSeasonIdsTask.Result;
-        if (episodeFileEpisodeIdsTask.Result.Count > 0)
+        var seasonIds = episodeSeasonIds;
+        if (episodeFileEpisodeIds.Count > 0)
         {
             var episodeDerivedSeasonIds = await dbContext
-                .DownloadTaskTvShowEpisode.Where(x => episodeFileEpisodeIdsTask.Result.Contains(x.Id))
+                .DownloadTaskTvShowEpisode.Where(x => episodeFileEpisodeIds.Contains(x.Id))
                 .Select(x => x.ParentId)
                 .ToListAsync(ct);
             seasonIds = seasonIds.Concat(episodeDerivedSeasonIds).Distinct().ToList();
@@ -1376,6 +1397,51 @@ public static partial class DbContextExtensions
                 .Select(x => x.ParentId)
                 .ToListAsync(ct);
             rootIds.UnionWith(seasonRootIds);
+        }
+
+        // Music roots are artists. Walk track file -> track -> album -> artist, mirroring the
+        // season/show walk above, so deleting a single song still resolves its owning artist.
+        rootIds.UnionWith(
+            await dbContext
+                .DownloadTaskMusicArtist.Where(x => downloadTaskIds.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync(ct)
+        );
+
+        var albumIds = await dbContext
+            .DownloadTaskMusicAlbum.Where(x => downloadTaskIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
+        var trackIds = await dbContext
+            .DownloadTaskMusicTrack.Where(x => downloadTaskIds.Contains(x.Id))
+            .Select(x => x.Id)
+            .ToListAsync(ct);
+
+        var trackFileTrackIds = await dbContext
+            .DownloadTaskMusicTrackFile.Where(x => downloadTaskIds.Contains(x.Id))
+            .Select(x => x.ParentId)
+            .ToListAsync(ct);
+
+        if (trackFileTrackIds.Count > 0)
+            trackIds = trackIds.Concat(trackFileTrackIds).Distinct().ToList();
+
+        if (trackIds.Count > 0)
+        {
+            var trackDerivedAlbumIds = await dbContext
+                .DownloadTaskMusicTrack.Where(x => trackIds.Contains(x.Id))
+                .Select(x => x.ParentId)
+                .ToListAsync(ct);
+            albumIds = albumIds.Concat(trackDerivedAlbumIds).Distinct().ToList();
+        }
+
+        if (albumIds.Count > 0)
+        {
+            var albumRootIds = await dbContext
+                .DownloadTaskMusicAlbum.Where(x => albumIds.Contains(x.Id))
+                .Select(x => x.ParentId)
+                .ToListAsync(ct);
+            rootIds.UnionWith(albumRootIds);
         }
 
         return rootIds;

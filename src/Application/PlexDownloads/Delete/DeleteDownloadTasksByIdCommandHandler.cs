@@ -72,7 +72,7 @@ public class DeleteDownloadTasksByKeyCommandHandler : ICommandHandler<DeleteDown
 
         // Exclude roots that were already directly deleted above — orphan cleanup only
         // applies to roots whose children were removed, not roots deleted explicitly.
-        var directlyDeletedRootIds = new HashSet<Guid>(movieIds.Concat(tvShowIds));
+        var directlyDeletedRootIds = new HashSet<Guid>(movieIds.Concat(tvShowIds).Concat(musicArtistIds));
         var orphanRootIds = affectedRootIds.Where(id => !directlyDeletedRootIds.Contains(id)).ToList();
         await _dbContext.DeleteOrphanedParentTasksByRootIdsAsync(orphanRootIds, ct);
 
@@ -150,12 +150,53 @@ public class DeleteDownloadTasksByKeyCommandHandler : ICommandHandler<DeleteDown
             })
             .ToListAsync(ct);
 
-        await Task.WhenAll(movieCandidatesTask, tvShowCandidatesTask, seasonCandidatesTask, episodeCandidatesTask);
+        // Awaited one at a time: a DbContext cannot serve overlapping operations.
+        var movieCandidates = await movieCandidatesTask;
+        var tvShowCandidates = await tvShowCandidatesTask;
+        var seasonCandidates = await seasonCandidatesTask;
+        var episodeCandidates = await episodeCandidatesTask;
 
-        return movieCandidatesTask
-            .Result.Concat(tvShowCandidatesTask.Result)
-            .Concat(seasonCandidatesTask.Result)
-            .Concat(episodeCandidatesTask.Result)
+        // Music mirrors the TV hierarchy: artist root, then album and track descendants.
+        var artistCandidates = await _dbContext
+            .DownloadTaskMusicArtist.Where(x => rootIds.Contains(x.Id))
+            .Select(x => new DownloadTaskKey
+            {
+                Id = x.Id,
+                Type = DownloadTaskType.MusicArtist,
+                PlexServerId = x.PlexServerId,
+                PlexLibraryId = x.PlexLibraryId,
+            })
+            .ToListAsync(ct);
+
+        var albumCandidates = await _dbContext
+            .DownloadTaskMusicAlbum.Where(x => rootIds.Contains(x.ParentId))
+            .Select(x => new DownloadTaskKey
+            {
+                Id = x.Id,
+                Type = DownloadTaskType.MusicAlbum,
+                PlexServerId = x.PlexServerId,
+                PlexLibraryId = x.PlexLibraryId,
+            })
+            .ToListAsync(ct);
+
+        var trackCandidates = await _dbContext
+            .DownloadTaskMusicTrack.Where(x => rootIds.Contains(x.Parent!.ParentId))
+            .Select(x => new DownloadTaskKey
+            {
+                Id = x.Id,
+                Type = DownloadTaskType.MusicTrack,
+                PlexServerId = x.PlexServerId,
+                PlexLibraryId = x.PlexLibraryId,
+            })
+            .ToListAsync(ct);
+
+        return movieCandidates
+            .Concat(tvShowCandidates)
+            .Concat(seasonCandidates)
+            .Concat(episodeCandidates)
+            .Concat(artistCandidates)
+            .Concat(albumCandidates)
+            .Concat(trackCandidates)
             .GroupBy(k => new
             {
                 k.Id,
@@ -210,6 +251,33 @@ public class DeleteDownloadTasksByKeyCommandHandler : ICommandHandler<DeleteDown
         {
             var matches = await _dbContext
                 .DownloadTaskTvShowEpisode.Where(x => episodeIds.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync(ct);
+            existing.UnionWith(matches);
+        }
+
+        if (idsByType.TryGetValue(DownloadTaskType.MusicArtist, out var artistIds) && artistIds.Count > 0)
+        {
+            var matches = await _dbContext
+                .DownloadTaskMusicArtist.Where(x => artistIds.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync(ct);
+            existing.UnionWith(matches);
+        }
+
+        if (idsByType.TryGetValue(DownloadTaskType.MusicAlbum, out var albumIds) && albumIds.Count > 0)
+        {
+            var matches = await _dbContext
+                .DownloadTaskMusicAlbum.Where(x => albumIds.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync(ct);
+            existing.UnionWith(matches);
+        }
+
+        if (idsByType.TryGetValue(DownloadTaskType.MusicTrack, out var trackIds) && trackIds.Count > 0)
+        {
+            var matches = await _dbContext
+                .DownloadTaskMusicTrack.Where(x => trackIds.Contains(x.Id))
                 .Select(x => x.Id)
                 .ToListAsync(ct);
             existing.UnionWith(matches);
