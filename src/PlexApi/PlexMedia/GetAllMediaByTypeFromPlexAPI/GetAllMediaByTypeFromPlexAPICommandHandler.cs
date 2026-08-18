@@ -251,10 +251,34 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
             )
             .ToResponse();
 
-        if (response.IsFailed)
-            return response.ToResult();
+        var mediaDataList = response.IsSuccess
+            ? response.Value?.MediaContainerWithMetadata?.MediaContainer?.Metadata ?? []
+            : [];
 
-        var mediaDataList = response.Value?.MediaContainerWithMetadata?.MediaContainer?.Metadata ?? [];
+        // Plex answers 400 to the includeGuids/includeMeta combination on music sections, while
+        // the same query without them returns the items happily. Retry bare rather than treating
+        // the section as empty - the only cost is the extra GUID lookup those flags would have
+        // provided, which music does not depend on.
+        if (!mediaDataList.Any())
+        {
+            var retryResponse = await client
+                .Content.ListContentAsync(
+                    new ListContentRequest
+                    {
+                        XPlexContainerStart = startIndex,
+                        XPlexContainerSize = batchSize,
+                        SectionId = libraryKeyInt.ToString(),
+                        MediaQuery = new MediaQuery { Type = type.ToPlexApiMediaType() },
+                    }
+                )
+                .ToResponse();
+
+            if (retryResponse.IsFailed)
+                return response.IsFailed ? response.ToResult() : retryResponse.ToResult();
+
+            mediaDataList = retryResponse.Value?.MediaContainerWithMetadata?.MediaContainer?.Metadata ?? [];
+        }
+
         if (!mediaDataList.Any())
             return ResultExtensions.IsNull("MediaContainerWithMetadata.MediaContainer.Metadata").LogError();
 
