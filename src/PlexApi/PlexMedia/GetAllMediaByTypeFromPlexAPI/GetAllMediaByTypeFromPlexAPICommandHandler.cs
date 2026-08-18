@@ -67,13 +67,19 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
 
         var mediaList = new List<LibraryMediaItemDTO>();
 
-        // Get the total size of the library
-        var totalSizeResult = await GetLibraryMediaTotalCount(client, plexLibrary.Key, mediaType);
+        // The count call goes through the SDK, which cannot express Plex's track section type (10)
+        // and throws while building the query string. Tracks therefore skip the pre-count entirely
+        // and rely on the paging-until-exhausted path below, which needs no total.
+        var totalSize = 0;
+        if (mediaType != PlexMediaType.Song)
+        {
+            var totalSizeResult = await GetLibraryMediaTotalCount(client, plexLibrary.Key, mediaType);
 
-        if (totalSizeResult.IsFailed)
-            return totalSizeResult.ToResult();
+            if (totalSizeResult.IsFailed)
+                return totalSizeResult.ToResult();
 
-        var totalSize = totalSizeResult.Value;
+            totalSize = totalSizeResult.Value;
+        }
 
         // Plex does not report totalSize for every section type - music (artist) sections omit it
         // entirely. A zero here therefore means "unknown", not "empty", so instead of giving up we
