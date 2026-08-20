@@ -54,7 +54,7 @@ public class DownloadTorrentEndpoint : Endpoint<DownloadTorrentEndpointRequest>
         );
 
         AllowAnonymous();
-        PreProcessor<DownloadClientAuthenticationPreProcessor<DownloadTorrentEndpointRequest>>();
+        PreProcessor<TorrentFileAuthenticationPreProcessor<DownloadTorrentEndpointRequest>>();
     }
 
     public override async Task HandleAsync(DownloadTorrentEndpointRequest req, CancellationToken ct)

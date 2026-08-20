@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Reaparr.Settings.Contracts;
 
 namespace Reaparr.BaseTests;
 
@@ -134,6 +135,9 @@ public abstract class BaseEndpointUnitTestBase<TEndpoint, TResponse> : BaseUnitT
                 s.AddTransient(_ => Mock.Mock<IReaparrDbContextFactory>().Object);
                 s.AddTransient(_ => IsDatabaseSetup ? IAuthDbContext : Mock.Create<IAuthDbContext>());
                 s.AddTransient(_ => Mock.Create<IAuthDbContextFactory>());
+                // TorrentFileAuthenticationPreProcessor accepts the indexer API key as well as a
+                // download client session, so endpoint tests need the integrations settings too.
+                s.AddTransient(_ => Mock.Create<IIntegrationsSettings>());
                 s.AddTransient(_ => Mock.Mock<ICommandExecutor>().Object);
                 s.AddSingleton(_ => Mock.Create<ISchedulerService>());
                 s.AddSingleton(_ => Mock.Mock<IProgressHubService>().Object);

@@ -70,12 +70,19 @@ public class SearchTvShowCommandHandler : ICommandHandler<SearchTvShowCommand, R
     private readonly ILogger _log;
     private readonly IReaparrDbContext _dbContext;
     private readonly INetworkSettings _networkSettings;
+    private readonly IIntegrationsSettings _integrationsSettings;
 
-    public SearchTvShowCommandHandler(ILogger log, IReaparrDbContext dbContext, INetworkSettings networkSettings)
+    public SearchTvShowCommandHandler(
+        ILogger log,
+        IReaparrDbContext dbContext,
+        INetworkSettings networkSettings,
+        IIntegrationsSettings integrationsSettings
+    )
     {
         _log = log.ForContext<SearchTvShowCommandHandler>();
         _dbContext = dbContext;
         _networkSettings = networkSettings;
+        _integrationsSettings = integrationsSettings;
     }
 
     public async Task<Result<TorznabMediaSearchResponseDTO>> ExecuteAsync(
@@ -204,7 +211,10 @@ public class SearchTvShowCommandHandler : ICommandHandler<SearchTvShowCommand, R
             // ReSharper disable once SuggestVarOrType_BuiltInTypes
             string torrentDownloadUrl = _networkSettings
                 .Url.AppendPathSegment(PublicApiRoutes.DownloadTorrent)
-                .SetQueryParams(torrentMetadata.Values);
+                .SetQueryParams(torrentMetadata.Values)
+                // Sonarr and Radarr fetch this link verbatim with their indexer client, which sends
+                // no download client session - the key has to travel in the URL or the grab 403s.
+                .SetQueryParam("apikey", _integrationsSettings.ReaparrApiKey);
 
             _log.Here()
                 .Verbose(

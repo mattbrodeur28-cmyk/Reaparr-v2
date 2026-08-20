@@ -52,8 +52,32 @@ public sealed class TorznabEndpoint : Endpoint<TorznabEndpointRequest>
                 }
                 await Send.XmlAsync(capsResult.Value, cancellationToken: ct);
                 break;
+            // Sonarr and Radarr fall back to the generic search mode in several situations - a
+            // string search with no id, anime, and some RSS paths. Throwing here answered 500 and
+            // the client recorded the indexer as failing. TV is the safe default: a generic query
+            // carries no id to disambiguate on, and SearchTvShowCommand tolerates empty ids.
             case "search":
-                throw new NotImplementedException();
+                var searchResult = await _commandExecutor.Send(
+                    new SearchTvShowCommand
+                    {
+                        Query = req.Query ?? string.Empty,
+                        Season = req.Season ?? 0,
+                        Episode = req.Episode ?? 0,
+                        TVDB_ID = req.TvdbId ?? 0,
+                        IMDB_ID = req.ImdbId ?? string.Empty,
+                        TMDB_ID = req.TmdbId ?? 0,
+                        Limit = req.Limit ?? 100,
+                        Offset = req.Offset ?? 0,
+                    },
+                    ct
+                );
+                if (searchResult.IsFailed)
+                {
+                    await Send.ErrorsAsync(cancellation: ct);
+                    break;
+                }
+                await Send.XmlAsync(searchResult.Value, cancellationToken: ct);
+                break;
             case "tvsearch":
                 var tvSearchResult = await _commandExecutor.Send(
                     new SearchTvShowCommand

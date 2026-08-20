@@ -164,6 +164,20 @@ public partial class BaseUnitTest
             .As<IAuthDbContextFactory>()
             .InstancePerDependency();
 
+        // The indexer API key is embedded in generated torrent URLs and accepted by
+        // TorrentFileAuthenticationPreProcessor, so a strict mock needs it stubbed.
+        builder
+            .Register(
+                (_, _) =>
+                {
+                    var settingsMock = new Mock<Reaparr.Settings.Contracts.IIntegrationsSettings>(MockBehavior.Loose);
+                    settingsMock.SetupGet(x => x.ReaparrApiKey).Returns("test-api-key");
+                    return settingsMock.Object;
+                }
+            )
+            .As<Reaparr.Settings.Contracts.IIntegrationsSettings>()
+            .InstancePerDependency();
+
         builder.RegisterType<MockAppBuildInfo>().As<IAppBuildInfo>().SingleInstance();
         builder.RegisterType<MockAppRuntimeInfo>().As<IAppRuntimeInfo>().SingleInstance();
 

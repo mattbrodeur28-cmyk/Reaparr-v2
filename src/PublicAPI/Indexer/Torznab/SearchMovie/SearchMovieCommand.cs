@@ -38,18 +38,21 @@ public class SearchMovieCommandHandler : ICommandHandler<SearchMovieCommand, Res
     private readonly IReaparrDbContext _dbContext;
     private readonly IAppRuntimeInfo _appRuntimeInfo;
     private readonly INetworkSettings _networkSettings;
+    private readonly IIntegrationsSettings _integrationsSettings;
 
     public SearchMovieCommandHandler(
         ILogger log,
         IReaparrDbContext dbContext,
         IAppRuntimeInfo appRuntimeInfo,
-        INetworkSettings networkSettings
+        INetworkSettings networkSettings,
+        IIntegrationsSettings integrationsSettings
     )
     {
         _log = log.ForContext<SearchMovieCommandHandler>();
         _dbContext = dbContext;
         _appRuntimeInfo = appRuntimeInfo;
         _networkSettings = networkSettings;
+        _integrationsSettings = integrationsSettings;
     }
 
     public async Task<Result<TorznabMediaSearchResponseDTO>> ExecuteAsync(
@@ -152,7 +155,10 @@ public class SearchMovieCommandHandler : ICommandHandler<SearchMovieCommand, Res
             // ReSharper disable once SuggestVarOrType_BuiltInTypes
             string torrentDownloadUrl = _networkSettings
                 .Url.AppendPathSegment(PublicApiRoutes.DownloadTorrent)
-                .SetQueryParams(torrentMetadata.Values);
+                .SetQueryParams(torrentMetadata.Values)
+                // Sonarr and Radarr fetch this link verbatim with their indexer client, which sends
+                // no download client session - the key has to travel in the URL or the grab 403s.
+                .SetQueryParam("apikey", _integrationsSettings.ReaparrApiKey);
 
             _log.Here()
                 .Debug(
