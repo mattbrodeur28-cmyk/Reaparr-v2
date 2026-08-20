@@ -137,36 +137,51 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
 
         var nonOwnedServerIds = dbContext.PlexServers.WhereIsNotOwned().Select(x => x.Id);
 
-        var episodeFilesTask = dbContext
-            .DownloadTaskTvShowEpisodeFile.Where(x => x.HashId != null && nonOwnedServerIds.Contains(x.PlexServerId))
+        // The hash filter goes to SQL. Clients poll this endpoint constantly and almost always name
+        // the hashes they care about, so loading every row with a HashId and discarding most of it
+        // in memory made each poll scale with total download history instead of the request.
+        // The category filter stays in memory because ResolveCategory falls back to media-type
+        // defaults that have no column to compare against - but it now runs on a far smaller set.
+        var hashes = hashesFilter?.ToList();
+
+        // Awaited one at a time: a DbContext cannot serve overlapping operations.
+        var episodeFiles = await dbContext
+            .DownloadTaskTvShowEpisodeFile.Where(x =>
+                x.HashId != null
+                && nonOwnedServerIds.Contains(x.PlexServerId)
+                && (hashes == null || hashes.Contains(x.HashId))
+            )
             .Include(x => x.Parent)
             .ToListAsync(ct);
 
-        var movieFilesTask = dbContext
-            .DownloadTaskMovieFile.Where(x => x.HashId != null && nonOwnedServerIds.Contains(x.PlexServerId))
+        var movieFiles = await dbContext
+            .DownloadTaskMovieFile.Where(x =>
+                x.HashId != null
+                && nonOwnedServerIds.Contains(x.PlexServerId)
+                && (hashes == null || hashes.Contains(x.HashId))
+            )
             .Include(x => x.Parent)
             .ToListAsync(ct);
 
-        var musicFilesTask = dbContext
-            .DownloadTaskMusicTrackFile.Where(x => x.HashId != null && nonOwnedServerIds.Contains(x.PlexServerId))
+        var musicFiles = await dbContext
+            .DownloadTaskMusicTrackFile.Where(x =>
+                x.HashId != null
+                && nonOwnedServerIds.Contains(x.PlexServerId)
+                && (hashes == null || hashes.Contains(x.HashId))
+            )
             .Include(x => x.Parent)
             .ToListAsync(ct);
 
-        await Task.WhenAll(episodeFilesTask, movieFilesTask, musicFilesTask);
-
-        var episodeInfos = episodeFilesTask
-            .Result
-            .Where(x => MatchesFilters(x, hashesFilter, categoryFilter))
+        var episodeInfos = episodeFiles
+            .Where(x => MatchesCategoryFilter(x, categoryFilter))
             .Select(MapToTorrentInfo)
             .ToList();
-        var movieInfos = movieFilesTask
-            .Result
-            .Where(x => MatchesFilters(x, hashesFilter, categoryFilter))
+        var movieInfos = movieFiles
+            .Where(x => MatchesCategoryFilter(x, categoryFilter))
             .Select(MapToTorrentInfo)
             .ToList();
-        var musicInfos = musicFilesTask
-            .Result
-            .Where(x => MatchesFilters(x, hashesFilter, categoryFilter))
+        var musicInfos = musicFiles
+            .Where(x => MatchesCategoryFilter(x, categoryFilter))
             .Select(MapToTorrentInfo)
             .ToList();
 
@@ -272,11 +287,13 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
         return category;
     }
 
-    private static bool MatchesFilters(DownloadTaskFileBase file, HashSet<string>? hashesFilter, string? categoryFilter)
+    /// <summary>
+    /// Category matching stays client-side: <see cref="ResolveCategory"/> falls back to a
+    /// media-type default when the client stored none, which has no column to compare against.
+    /// The hash filter is applied in SQL before this runs.
+    /// </summary>
+    private static bool MatchesCategoryFilter(DownloadTaskFileBase file, string? categoryFilter)
     {
-        if (hashesFilter is not null && !hashesFilter.Contains(file.HashId ?? string.Empty))
-            return false;
-
         if (categoryFilter is null)
             return true;
 

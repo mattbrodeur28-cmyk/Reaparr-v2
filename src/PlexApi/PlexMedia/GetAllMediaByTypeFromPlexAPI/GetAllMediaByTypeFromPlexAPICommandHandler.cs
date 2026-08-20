@@ -317,7 +317,7 @@ public class GetAllMediaByTypeFromPlexApiCommandHandler
 
         var apiMediaType = type.ToPlexApiMediaType();
         _log.Here()
-            .Information(
+            .Verbose(
                 "Requesting section {SectionId} media: PlexMediaType={PlexMediaType}, ApiMediaType={ApiMediaType} (numeric {ApiMediaTypeValue}), start={Start}, size={Size}",
                 libraryKeyInt,
                 type,

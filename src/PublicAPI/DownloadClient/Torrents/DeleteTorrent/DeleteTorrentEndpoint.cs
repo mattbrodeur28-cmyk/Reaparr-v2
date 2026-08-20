@@ -259,7 +259,7 @@ public sealed class DeleteTorrentEndpoint : Endpoint<DeleteTorrentRequest>
                     or DownloadStatus.AutoPaused
                     or DownloadStatus.Restarting;
 
-        var movieTask = _dbContext
+        var movieRows = await _dbContext
             .DownloadTaskMovieFile.Where(x =>
                 x.HashId != null && (normalizedHashes == null || normalizedHashes.Contains(x.HashId.ToLower()))
             )
@@ -276,7 +276,7 @@ public sealed class DeleteTorrentEndpoint : Endpoint<DeleteTorrentRequest>
             })
             .ToListAsync(ct);
 
-        var episodeTask = _dbContext
+        var episodeRows = await _dbContext
             .DownloadTaskTvShowEpisodeFile.Where(x =>
                 x.HashId != null && (normalizedHashes == null || normalizedHashes.Contains(x.HashId.ToLower()))
             )
@@ -293,7 +293,7 @@ public sealed class DeleteTorrentEndpoint : Endpoint<DeleteTorrentRequest>
             })
             .ToListAsync(ct);
 
-        var musicTask = _dbContext
+        var musicRows = await _dbContext
             .DownloadTaskMusicTrackFile.Where(x =>
                 x.HashId != null && (normalizedHashes == null || normalizedHashes.Contains(x.HashId.ToLower()))
             )
@@ -310,9 +310,9 @@ public sealed class DeleteTorrentEndpoint : Endpoint<DeleteTorrentRequest>
             })
             .ToListAsync(ct);
 
-        await Task.WhenAll(movieTask, episodeTask, musicTask);
-
-        var all = movieTask.Result.Concat(episodeTask.Result).Concat(musicTask.Result).ToList();
+        // Awaited one at a time above: a DbContext cannot serve overlapping operations, and the
+        // store is a single SQLite file so starting them together wins nothing.
+        var all = movieRows.Concat(episodeRows).Concat(musicRows).ToList();
         return (
             all.Where(x => IsActive(x.DownloadStatus)).Select(x => x.Key).ToList(),
             all.Where(x => !IsActive(x.DownloadStatus)).Select(x => x.Key).ToList(),

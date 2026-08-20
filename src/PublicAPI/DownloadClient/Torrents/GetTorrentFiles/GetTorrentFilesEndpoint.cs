@@ -45,17 +45,21 @@ public sealed class GetTorrentFilesEndpoint : Endpoint<GetTorrentFilesRequest, L
     {
         _log.Here().DebugApiCall(HttpContext, req);
 
-        var episodeFilesTask = _dbContext
-            .DownloadTaskTvShowEpisodeFile.Where(x => x.HashId == req.Hash)
+        // Awaited one at a time: a DbContext cannot serve overlapping operations, and the store is
+        // a single SQLite file so starting them together wins nothing.
+        var episodeFiles = await _dbContext.DownloadTaskTvShowEpisodeFile.Where(x => x.HashId == req.Hash)
             .ToListAsync(ct);
 
-        var movieFilesTask = _dbContext.DownloadTaskMovieFile.Where(x => x.HashId == req.Hash).ToListAsync(ct);
+        var movieFiles = await _dbContext.DownloadTaskMovieFile.Where(x => x.HashId == req.Hash).ToListAsync(ct);
 
-        await Task.WhenAll(episodeFilesTask, movieFilesTask);
+        // Music was missing here, so a music download reported an empty file list to its client.
+        var musicFiles = await _dbContext.DownloadTaskMusicTrackFile.Where(x => x.HashId == req.Hash)
+            .ToListAsync(ct);
 
-        var files = episodeFilesTask
-            .Result.Cast<DownloadTaskFileBase>()
-            .Concat(movieFilesTask.Result)
+        var files = episodeFiles
+            .Cast<DownloadTaskFileBase>()
+            .Concat(movieFiles)
+            .Concat(musicFiles)
             .Select(file => new QBittorrentTorrentFile { Name = ResolveTorrentFilePath(file) })
             .ToList();
 

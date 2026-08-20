@@ -153,26 +153,22 @@ public class GetDownloadPreviewQueryHandler : ICommandHandler<GetDownloadPreview
             var tvShowIds = allKeys.Select(x => x.TvShowId).Distinct().ToList();
             var seasonIds = allKeys.Select(x => x.SeasonId).Distinct().ToList();
 
-            // Retrieve TV shows, seasons, and episodes in parallel
-            var tvShowsTask = _dbContext
+            // Retrieved one at a time: a DbContext cannot serve overlapping operations. Holding the
+            // Tasks and awaiting them later would not help either, since ToListAsync starts
+            // immediately - they have to be awaited in turn.
+            var tvShows = await _dbContext
                 .PlexTvShows.AsNoTracking()
                 .Where(x => tvShowIds.Contains(x.Id))
                 .ProjectToDownloadPreview()
                 .ToListAsync(cancellationToken);
 
-            var seasonsTask = _dbContext
+            var seasons = await _dbContext
                 .PlexTvShowSeason.AsNoTracking()
                 .Where(x => seasonIds.Contains(x.Id))
                 .ProjectToDownloadPreview()
                 .ToListAsync(cancellationToken);
 
-            var episodesTask = CreateEpisodePreviews(episodeDownloadMedia, allKeys, cancellationToken);
-
-            await Task.WhenAll(tvShowsTask, seasonsTask, episodesTask);
-
-            var tvShows = await tvShowsTask;
-            var seasons = await seasonsTask;
-            var episodesResult = await episodesTask;
+            var episodesResult = await CreateEpisodePreviews(episodeDownloadMedia, allKeys, cancellationToken);
 
             if (episodesResult.IsFailed)
                 return episodesResult.ToResult();
