@@ -73,4 +73,29 @@ public static partial class DbContextExtensions
             .Distinct()
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// The ids of online Plex servers that the user does not own.
+    /// </summary>
+    /// <remarks>
+    /// Indexer results must exclude owned servers. /torrents/info only reports downloads from
+    /// non-owned servers, so a release offered from an owned server gets grabbed, creates a
+    /// download task, and is then never reported back - Sonarr and Radarr see the transfer vanish
+    /// and treat it as failed. Marking a server owned is also meant to stop Reaparr offering media
+    /// the user already has, which the indexer never honoured.
+    /// </remarks>
+    public static async Task<List<int>> GetOnlineNonOwnedServerIds(
+        this IReaparrDbContext dbContext,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var nonOwnedServerIds = dbContext.PlexServers.WhereIsNotOwned().Select(x => x.Id);
+
+        return await dbContext
+            .PlexServerStatuses.AsNoTracking()
+            .Where(x => x.IsSuccessful && nonOwnedServerIds.Contains(x.PlexServerId))
+            .Select(x => x.PlexServerId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
 }
