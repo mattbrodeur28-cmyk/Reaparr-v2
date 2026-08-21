@@ -401,6 +401,11 @@ jobs:
             (needs.Check-PR-Status.result == 'success' || github.event_name == 'workflow_dispatch') &&
             !contains(needs.*.result, 'failure') &&
             !contains(needs.*.result, 'cancelled')
+        # docker-build-multiarch's `create-manifest` job declares `packages: write` to push the
+        # combined manifest, so the calling job must grant at least that.
+        permissions:
+            contents: read
+            packages: write
         uses: ./.github/workflows/docker-build-multiarch.yml
         with:
             push: false
@@ -415,6 +420,13 @@ jobs:
             (needs.Check-PR-Status.result == 'success' || github.event_name == 'workflow_dispatch') &&
             !contains(needs.*.result, 'failure') &&
             !contains(needs.*.result, 'cancelled')
+        # A called workflow cannot request more than the calling job is granted. desktop-build's
+        # `build` and `upload-release` jobs both declare `contents: write` to attach installers to
+        # the release, so this job has to grant it - the repo default is contents: read, which is
+        # what made every run fail at startup with "requesting 'contents: write', but is only
+        # allowed 'contents: read'".
+        permissions:
+            contents: write
         uses: ./.github/workflows/desktop-build.yml
         with:
             push: false

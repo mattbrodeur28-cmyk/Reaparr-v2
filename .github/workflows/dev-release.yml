@@ -85,6 +85,13 @@ jobs:
         name: Build Desktop Apps (DEV)
         needs: [ semantic-release ]
         if: needs.semantic-release.outputs.new-release-published == 'true'
+        # A called workflow cannot request more than the calling job is granted. desktop-build's
+        # `build` and `upload-release` jobs both declare `contents: write` to attach installers to
+        # the release, so this job has to grant it - the repo default is contents: read, which is
+        # what made every run fail at startup with "requesting 'contents: write', but is only
+        # allowed 'contents: read'".
+        permissions:
+            contents: write
         uses: ./.github/workflows/desktop-build.yml
         secrets: inherit
         with:
@@ -99,6 +106,11 @@ jobs:
         name: Build and Publish Docker Images
         needs: [ semantic-release ]
         if: needs.semantic-release.outputs.new-release-published == 'true'
+        # docker-build-multiarch's `create-manifest` job declares `packages: write` to push the
+        # combined manifest, so the calling job must grant at least that.
+        permissions:
+            contents: read
+            packages: write
         uses: ./.github/workflows/docker-build-multiarch.yml
         secrets: inherit
         with:
