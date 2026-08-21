@@ -25,4 +25,7 @@ public static class EnvKeys
     public const string DisableAuthentication = "I_AM_DUMB_SO_DISABLE_AUTHENTICATION";
     public const string AppImage = "APPIMAGE";
     public const string DesktopEmbeddedDisabled = "REAPARR_DESKTOP_EMBEDDED_DISABLED";
+
+    /// <summary>Hours of uptime after which the process restarts itself. 0 disables.</summary>
+    public const string RestartHours = "REAPARR_RESTART_HOURS";
 }

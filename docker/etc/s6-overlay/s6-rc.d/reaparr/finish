@@ -1,0 +1,7 @@
+#!/command/with-contenv sh
+# Back off before s6 restarts the service.
+#
+# Without this, a process that fails during boot is respawned immediately and spins at full speed,
+# which floods the log and makes the container hard to interrupt. A short sleep costs nothing on a
+# normal restart (scheduled or manual) and turns a crash loop into something readable.
+sleep 5

@@ -3,6 +3,12 @@
 public interface IDownloadQueue : ISetup, IBusy
 {
     /// <summary>
+    /// Stops the background queue loop. Called during shutdown so a new download cannot be
+    /// started while the host is tearing down.
+    /// </summary>
+    Task StopAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Check the DownloadQueue for downloadTasks which can be started.
     /// </summary>
     Task<Result> CheckDownloadQueue(List<int> plexServerIds);

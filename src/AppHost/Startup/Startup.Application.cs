@@ -59,6 +59,11 @@ public static partial class Startup
         if (!appRuntimeInfo.IsIntegrationTestMode)
         {
             // SignalR configuration
+            // Deliberately outside ApiRoutes.Base: everything under /api gets IsInternalApi() and
+            // the RequireAuthenticatedUser fallback policy, which a container healthcheck cannot
+            // satisfy.
+            app.MapHealthChecks("/health").AllowAnonymous();
+
             app.MapHub<LogHub>("/logs");
             app.MapHub<ProgressHub>("/progress");
             app.MapHub<DownloadHub>("/download");

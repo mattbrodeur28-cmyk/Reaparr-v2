@@ -47,7 +47,13 @@ public class DownloadQueue : IDownloadQueue
     private readonly ConcurrentDictionary<int, byte> _scheduledQueueRechecks = new();
     private readonly ConcurrentDictionary<int, ServerCircuitState> _serverCircuitStates = new();
 
-    private readonly CancellationToken _token = new();
+    // Was `new CancellationToken()` - i.e. CancellationToken.None - so the queue loop below could
+    // never be cancelled, every `when (_token.IsCancellationRequested)` guard was dead code, and
+    // the loop could start a brand new download while the host was shutting down.
+    private readonly CancellationTokenSource _cts = new();
+    private Task? _queueLoopTask;
+
+    private CancellationToken _token => _cts.Token;
 
     public DownloadQueue(
         ILogger log,
@@ -64,8 +70,47 @@ public class DownloadQueue : IDownloadQueue
 
     public Result Setup()
     {
-        var copyTask = Task.Factory.StartNew(ExecuteDownloadQueueCheck, TaskCreationOptions.LongRunning);
-        return copyTask.IsFaulted ? Result.Fail("ExecuteFileTasks failed due to an error").LogError() : Result.Ok();
+        // The old code checked IsFaulted immediately after StartNew, which is always false that
+        // early - a failure in the loop was silently swallowed. Keep the task instead so it can be
+        // observed on shutdown, and attach a continuation so a crash is at least logged.
+        _queueLoopTask = Task.Factory.StartNew(
+                ExecuteDownloadQueueCheck,
+                TaskCreationOptions.LongRunning
+            )
+            .Unwrap();
+
+        _ = _queueLoopTask.ContinueWith(
+            t => _log.Here().Error(t.Exception!, "The DownloadQueue loop terminated unexpectedly"),
+            TaskContinuationOptions.OnlyOnFaulted
+        );
+
+        return Result.Ok();
+    }
+
+    /// <summary>
+    /// Stops the queue loop so shutdown cannot race a newly started download.
+    /// </summary>
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        await _cts.CancelAsync();
+        _plexServersToCheckChannel.Writer.TryComplete();
+
+        if (_queueLoopTask is null)
+            return;
+
+        try
+        {
+            // Bounded: shutdown has a fixed budget and this must not consume all of it.
+            await _queueLoopTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            _log.Here().Warning("The DownloadQueue loop did not stop within the shutdown budget");
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected - the loop observed cancellation.
+        }
     }
 
     /// <summary>

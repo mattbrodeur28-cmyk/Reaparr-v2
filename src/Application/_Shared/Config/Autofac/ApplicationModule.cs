@@ -44,6 +44,10 @@ public class ApplicationModule : Module
             .As<IHostedService>()
             .SingleInstance();
 
+        builder.RegisterType<DiagnosticsHeartbeatService>().As<IHostedService>().SingleInstance();
+
+        builder.RegisterType<RestartSupervisor>().As<IHostedService>().SingleInstance();
+
         builder
             .Register(context => new UpdateManager(
                 new GithubSource(

@@ -79,6 +79,24 @@ public class SchedulerService : ISchedulerService
             : Result.Fail($"Could not start Scheduler {_scheduler.SchedulerName}").LogError();
     }
 
+    /// <summary>
+    /// Stops new triggers from firing while letting executing jobs run to completion.
+    /// </summary>
+    /// <remarks>
+    /// Shutdown needs this: pausing active downloads requires enumerating executing jobs, which is
+    /// impossible once the scheduler has shut down. Standby closes the door on new work first.
+    /// </remarks>
+    public async Task<Result> StandbyAsync()
+    {
+        if (_scheduler.IsShutdown || _scheduler.InStandbyMode)
+            return Result.Ok();
+
+        _log.Here().Debug("Putting the Quartz Scheduler into standby");
+        await _scheduler.Standby();
+
+        return Result.Ok();
+    }
+
     public async Task<Result> StopAsync()
     {
         if (!_scheduler.IsShutdown)
@@ -95,7 +113,9 @@ public class SchedulerService : ISchedulerService
             await _scheduler.Shutdown(true).WaitAsync(TimeSpan.FromSeconds(15));
         }
 
-        return _scheduler.IsStarted ? Result.Ok() : Result.Fail("Could not shutdown Scheduler").LogError();
+        // Checked IsStarted, which is false after a SUCCESSFUL shutdown - so every clean shutdown
+        // returned Fail and logged an error, making shutdown diagnostics actively misleading.
+        return _scheduler.IsShutdown ? Result.Ok() : Result.Fail("Could not shutdown Scheduler").LogError();
     }
 
     #endregion

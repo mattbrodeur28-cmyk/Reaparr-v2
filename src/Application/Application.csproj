@@ -74,5 +74,6 @@
     </ItemGroup>
     <ItemGroup>
         <InternalsVisibleTo Include="Reaparr.Application.UnitTests" />
+        <InternalsVisibleTo Include="Reaparr.IntegrationTests" />
     </ItemGroup>
 </Project>

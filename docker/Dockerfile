@@ -94,7 +94,9 @@ ENV INFORMATIONAL_VERSION=${INFORMATIONAL_VERSION}
 ENV PORT=${PORT}
 ENV DOTNET_ENVIRONMENT=Production
 ENV DOTNET_URLS=http://+:${PORT}
-ENV S6_SERVICES_GRACETIME=15000
+# Must exceed the host's ShutdownTimeout (25s, set in Program.cs) so s6 does not SIGKILL
+# partway through the ordered drain in Boot.StopAsync.
+ENV S6_SERVICES_GRACETIME=30000
 ENV REAPARR_PLATFORM=docker
 
 # Install Alpine dependencies (.NET runtime deps + dash-mpd-cli helpers)
@@ -160,6 +162,12 @@ COPY docker/10-config /etc/fix-attrs.d/10-config
 RUN if [ -f /etc/s6-overlay/s6-rc.d/user/contents.d/svc-cron ]; then \
       rm -f /etc/s6-overlay/s6-rc.d/user/contents.d/svc-cron; \
     fi
+
+# Observability only. s6 supervises the dotnet process as a longrun service and restarts it in
+# place, so an unhealthy status here does not itself trigger any recovery - it surfaces the state
+# to `docker ps` and to anything watching from outside.
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=3 \
+    CMD wget --quiet --tries=1 --spider "http://localhost:${PORT}/health" || exit 1
 
 EXPOSE ${PORT}
 VOLUME /Config /Downloads /Movies /TvShows

@@ -220,6 +220,13 @@ public static partial class Startup
     {
         services.AddDataProtection().PersistKeysToDbContext<AuthDbContext>();
 
+        // Health checks are mapped at /health, outside ApiRoutes.Base, so the FallbackPolicy below
+        // does not apply - a Docker HEALTHCHECK cannot authenticate.
+        services
+            .AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>("database")
+            .AddCheck<MemoryHealthCheck>("memory");
+
         services.AddAuthorization(options =>
         {
             options.AddPolicy("AuthenticatedUsers", x => x.RequireRole("Admin"));

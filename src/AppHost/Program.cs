@@ -61,6 +61,20 @@ public class Program
             var builder = WebApplication.CreateBuilder(args);
 
             builder.Host.ConfigureAutofacBuilder(logBuffer);
+
+            // These three timeouts have to agree, innermost shortest, or a shutdown gets cut off
+            // partway through: Docker SIGKILLs after its stop-timeout, s6 allows
+            // S6_SERVICES_GRACETIME (30s, set in the Dockerfile), and .NET defaults to 30s here.
+            // 25s leaves the ordered drain in Boot.StopAsync room to finish inside s6's window.
+            builder.Host.ConfigureHostOptions(options =>
+            {
+                options.ShutdownTimeout = TimeSpan.FromSeconds(25);
+
+                // Explicit rather than implicit: the .NET default is already StopHost, which means
+                // an unhandled exception in any BackgroundService takes the process down - and
+                // under s6 that becomes a silent restart loop. Stating it makes it a decision.
+                options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost;
+            });
             builder.Services.ConfigureServices(builder.Environment, _appRuntimeInfo);
             var app = builder.Build();
 

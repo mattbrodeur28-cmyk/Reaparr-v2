@@ -115,12 +115,32 @@ public class Boot : IHostedService
     {
         _log.Here().Information("Shutting down the container");
 
-        // Stop scheduler first so background jobs can't race with the auto-pause DB queries
-        await _schedulerService.StopAsync();
+        // Order matters here, and it used to be wrong. Shutting the scheduler down first meant
+        // AutoPauseActiveDownloadsCommand - which finds active work via GetCurrentlyExecutingJobs -
+        // always enumerated an empty list, so the pause had never actually done anything. Standby
+        // closes the door on new triggers while leaving executing jobs enumerable and pausable.
 
+        // 1. Stop the queue loop so it cannot start a new download mid-shutdown.
+        (await Result.Try(() => _downloadQueue.StopAsync(cancellationToken))).LogIfFailed();
+
+        // 2. Stop new triggers, but keep executing jobs alive and visible.
+        (await Result.Try(() => _schedulerService.StandbyAsync())).LogIfFailed();
+
+        // 3. Now the pause can see - and pause - what is actually running.
         var autoPauseResult = await _commandExecutor.Send(new AutoPauseActiveDownloadsCommand(), cancellationToken);
         if (autoPauseResult.IsFailed)
             autoPauseResult.LogError();
+
+        // 4. Let interrupted jobs unwind, bounded so this cannot eat the whole shutdown budget.
+        (
+            await Result.Try(() =>
+                _schedulerService.AwaitScheduler(cancellationToken).WaitAsync(TimeSpan.FromSeconds(8))
+            )
+        ).LogIfFailed();
+
+        // 5. Finally shut the scheduler down. The dispatcher stops after this (hosted services stop
+        //    in reverse registration order) and performs its own final progress flush.
+        await _schedulerService.StopAsync();
     }
 
     #endregion
