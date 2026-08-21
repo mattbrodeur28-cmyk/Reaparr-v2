@@ -22,3 +22,4 @@ export * from './serverStore';
 export * from './settingsStore';
 export * from './signalrStore';
 export * from './updateStore';
+export * from './themeStore';

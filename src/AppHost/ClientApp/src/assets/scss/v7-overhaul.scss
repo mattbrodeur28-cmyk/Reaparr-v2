@@ -1,11 +1,16 @@
-/* Reaparr V7 — application-wide modern UI finish */
+/* Reaparr V7 - application-wide modern UI finish */
+/*
+ * Every selector is scoped to [data-reaparr-theme="modern"] so the Classic theme gets
+ * none of it. The attribute is set on <html> by themeStore, which is why switching
+ * themes needs no reload and no conditional stylesheet loading.
+ */
 
-.v7-page {
+[data-reaparr-theme="modern"] .v7-page {
   min-height: 100%;
   padding: 26px clamp(16px, 3vw, 44px) 54px;
 }
 
-.v7-page-hero {
+[data-reaparr-theme="modern"] .v7-page-hero {
   position: relative;
   display: flex;
   align-items: flex-end;
@@ -23,21 +28,21 @@
   backdrop-filter: blur(22px) saturate(140%);
 }
 
-.v7-page-hero--downloads {
+[data-reaparr-theme="modern"] .v7-page-hero--downloads {
   background:
     radial-gradient(circle at 88% -20%, rgba(78, 194, 255, 0.18), transparent 26rem),
     linear-gradient(135deg, rgba(96, 104, 255, 0.13), rgba(13, 18, 30, 0.18) 58%),
     var(--v5-surface);
 }
 
-.v7-page-hero--integrations {
+[data-reaparr-theme="modern"] .v7-page-hero--integrations {
   background:
     radial-gradient(circle at 87% -15%, rgba(93, 230, 162, 0.17), transparent 25rem),
     linear-gradient(135deg, rgba(119, 92, 255, 0.12), rgba(13, 18, 30, 0.18) 60%),
     var(--v5-surface);
 }
 
-.v7-page-hero--compact {
+[data-reaparr-theme="modern"] .v7-page-hero--compact {
   padding-top: 30px;
   padding-bottom: 30px;
 }
@@ -45,7 +50,7 @@
 .v7-page-kicker,
 .v7-section-eyebrow,
 .v7-automation-card__eyebrow,
-.v7-automation-section__eyebrow {
+[data-reaparr-theme="modern"] .v7-automation-section__eyebrow {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -56,7 +61,7 @@
   text-transform: uppercase;
 }
 
-.v7-page-title {
+[data-reaparr-theme="modern"] .v7-page-title {
   margin: 8px 0 0;
   font-size: clamp(2.1rem, 4vw, 4rem);
   font-weight: 850;
@@ -64,11 +69,11 @@
   letter-spacing: -0.052em;
 }
 
-.v7-page-hero--compact .v7-page-title {
+[data-reaparr-theme="modern"] .v7-page-hero--compact .v7-page-title {
   font-size: clamp(2rem, 3.2vw, 3.15rem);
 }
 
-.v7-page-subtitle {
+[data-reaparr-theme="modern"] .v7-page-subtitle {
   max-width: 760px;
   margin: 14px 0 0;
   color: var(--v5-text-muted);
@@ -77,7 +82,7 @@
 }
 
 .v7-page-hero__badge,
-.v7-live-pill {
+[data-reaparr-theme="modern"] .v7-live-pill {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -91,12 +96,12 @@
   font-weight: 700;
 }
 
-.v7-page-metrics {
+[data-reaparr-theme="modern"] .v7-page-metrics {
   display: flex;
   gap: 9px;
 }
 
-.v7-page-metric {
+[data-reaparr-theme="modern"] .v7-page-metric {
   min-width: 108px;
   padding: 12px 15px;
   border: 1px solid var(--v5-border);
@@ -104,7 +109,7 @@
   background: var(--v5-surface-soft);
 }
 
-.v7-page-metric span {
+[data-reaparr-theme="modern"] .v7-page-metric span {
   display: block;
   color: var(--v5-text-muted);
   font-size: 0.7rem;
@@ -112,7 +117,7 @@
   letter-spacing: 0.08em;
 }
 
-.v7-page-metric strong {
+[data-reaparr-theme="modern"] .v7-page-metric strong {
   display: block;
   margin-top: 4px;
   font-size: 1.5rem;
@@ -120,12 +125,12 @@
 
 .v7-page-content,
 .v7-media-overview-shell,
-.v7-settings-stack {
+[data-reaparr-theme="modern"] .v7-settings-stack {
   margin-top: 18px;
 }
 
 .v7-section-heading,
-.v7-automation-section__heading {
+[data-reaparr-theme="modern"] .v7-automation-section__heading {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -134,14 +139,14 @@
 }
 
 .v7-section-title,
-.v7-automation-section__title {
+[data-reaparr-theme="modern"] .v7-automation-section__title {
   margin-top: 3px;
   font-size: 1.35rem;
   font-weight: 800;
   letter-spacing: -0.025em;
 }
 
-.v7-live-dot {
+[data-reaparr-theme="modern"] .v7-live-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -149,13 +154,13 @@
   box-shadow: 0 0 0 4px rgba(93, 230, 162, 0.1);
 }
 
-.v7-download-groups {
+[data-reaparr-theme="modern"] .v7-download-groups {
   display: grid;
   gap: 14px;
   padding-bottom: 14px;
 }
 
-.v7-download-group {
+[data-reaparr-theme="modern"] .v7-download-group {
   overflow: hidden;
   border: 1px solid var(--v5-border);
   border-radius: 22px;
@@ -163,7 +168,7 @@
   box-shadow: var(--v5-shadow-sm);
 }
 
-.v7-empty-state {
+[data-reaparr-theme="modern"] .v7-empty-state {
   display: flex;
   min-height: 460px;
   flex-direction: column;
@@ -172,7 +177,7 @@
   text-align: center;
 }
 
-.v7-empty-state__icon {
+[data-reaparr-theme="modern"] .v7-empty-state__icon {
   display: grid;
   width: 92px;
   height: 92px;
@@ -184,20 +189,20 @@
   font-size: 2.8rem;
 }
 
-.v7-empty-state__title {
+[data-reaparr-theme="modern"] .v7-empty-state__title {
   margin-top: 20px;
   font-size: 1.5rem;
   font-weight: 820;
 }
 
-.v7-empty-state__copy {
+[data-reaparr-theme="modern"] .v7-empty-state__copy {
   max-width: 560px;
   margin-top: 7px;
   color: var(--v5-text-muted);
 }
 
 /* MediaOverview modernization without touching its business logic */
-.v7-media-overview-shell {
+[data-reaparr-theme="modern"] .v7-media-overview-shell {
   overflow: hidden;
   border: 1px solid var(--v5-border);
   border-radius: 25px;
@@ -206,16 +211,16 @@
   backdrop-filter: blur(18px);
 }
 
-.v7-media-overview-shell > * {
+[data-reaparr-theme="modern"] .v7-media-overview-shell > * {
   min-height: 200px;
 }
 
 .v7-media-overview-shell .q-toolbar,
-.v7-media-overview-shell .q-bar {
+[data-reaparr-theme="modern"] .v7-media-overview-shell .q-bar {
   background: transparent !important;
 }
 
-.v7-media-overview-shell .q-card {
+[data-reaparr-theme="modern"] .v7-media-overview-shell .q-card {
   border-color: var(--v5-border) !important;
   background: var(--v5-surface) !important;
   box-shadow: var(--v5-shadow-sm) !important;
@@ -225,27 +230,27 @@
     box-shadow 170ms ease;
 }
 
-.v7-media-overview-shell .q-card:hover {
+[data-reaparr-theme="modern"] .v7-media-overview-shell .q-card:hover {
   border-color: rgba(255, 86, 119, 0.27) !important;
   box-shadow: var(--v5-shadow-md) !important;
 }
 
 .v7-media-overview-shell .q-field__control,
-.v7-media-overview-shell .q-btn-group {
+[data-reaparr-theme="modern"] .v7-media-overview-shell .q-btn-group {
   border-radius: 13px;
 }
 
-.v7-media-overview-shell .q-table__container {
+[data-reaparr-theme="modern"] .v7-media-overview-shell .q-table__container {
   margin: 12px;
 }
 
 /* Settings pages — modernize existing QSection/HelpRow components */
-.v7-settings-stack {
+[data-reaparr-theme="modern"] .v7-settings-stack {
   display: grid;
   gap: 14px;
 }
 
-.v7-settings-stack > * {
+[data-reaparr-theme="modern"] .v7-settings-stack > * {
   overflow: hidden;
   border: 1px solid var(--v5-border);
   border-radius: 23px;
@@ -255,78 +260,78 @@
 }
 
 .v7-settings-stack .q-card,
-.v7-settings-stack .q-list {
+[data-reaparr-theme="modern"] .v7-settings-stack .q-list {
   background: transparent;
 }
 
-.v7-settings-stack .q-item {
+[data-reaparr-theme="modern"] .v7-settings-stack .q-item {
   min-height: 48px;
 }
 
-.v7-settings-stack .q-separator {
+[data-reaparr-theme="modern"] .v7-settings-stack .q-separator {
   opacity: 0.75;
 }
 
-.v7-settings-stack .q-field--outlined .q-field__control {
+[data-reaparr-theme="modern"] .v7-settings-stack .q-field--outlined .q-field__control {
   border-radius: 13px;
 }
 
 /* Existing downloads tables */
 .v7-download-group .q-table__container,
-.v7-download-group .q-table__card {
+[data-reaparr-theme="modern"] .v7-download-group .q-table__card {
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
-.v7-download-group .q-table thead tr {
+[data-reaparr-theme="modern"] .v7-download-group .q-table thead tr {
   background: var(--v5-surface-soft);
 }
 
-.v7-download-group .q-table tbody tr {
+[data-reaparr-theme="modern"] .v7-download-group .q-table tbody tr {
   transition: background 140ms ease;
 }
 
-.v7-download-group .q-table tbody tr:hover {
+[data-reaparr-theme="modern"] .v7-download-group .q-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.035);
 }
 
 /* Apply V7 finish to legacy screens too */
-.v5-shell .q-page:not(.discover-page-v5):not(.v7-page) {
+[data-reaparr-theme="modern"] .v5-shell .q-page:not(.discover-page-v5):not(.v7-page) {
   padding: 22px clamp(14px, 2.4vw, 34px) 44px;
 }
 
 .v5-shell .q-page:not(.discover-page-v5) > .q-card,
 .v5-shell .q-page:not(.discover-page-v5) > .q-list,
-.v5-shell .q-page:not(.discover-page-v5) > .q-table__container {
+[data-reaparr-theme="modern"] .v5-shell .q-page:not(.discover-page-v5) > .q-table__container {
   border: 1px solid var(--v5-border);
   border-radius: 21px;
   background: var(--v5-surface);
   box-shadow: var(--v5-shadow-sm);
 }
 
-.v5-shell .q-dialog__inner > .q-card {
+[data-reaparr-theme="modern"] .v5-shell .q-dialog__inner > .q-card {
   border-radius: 24px !important;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 45%),
     var(--v5-surface-strong) !important;
 }
 
-.v5-shell .q-dialog__inner .q-card__section:first-child {
+[data-reaparr-theme="modern"] .v5-shell .q-dialog__inner .q-card__section:first-child {
   padding-top: 20px;
 }
 
-.v5-shell .q-menu {
+[data-reaparr-theme="modern"] .v5-shell .q-menu {
   padding: 5px;
 }
 
-.v5-shell .q-menu .q-item {
+[data-reaparr-theme="modern"] .v5-shell .q-menu .q-item {
   min-height: 40px;
   border-radius: 10px;
 }
 
-.v5-shell .q-notification {
+[data-reaparr-theme="modern"] .v5-shell .q-notification {
   border: 1px solid var(--v5-border);
   border-radius: 15px;
   box-shadow: var(--v5-shadow-lg);
@@ -334,66 +339,66 @@
 }
 
 @media (max-width: 980px) {
-  .v7-automation-grid {
+  [data-reaparr-theme="modern"] .v7-automation-grid {
     grid-template-columns: 1fr;
   }
 
-  .v7-page-hero {
+  [data-reaparr-theme="modern"] .v7-page-hero {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .v7-page-metrics {
+  [data-reaparr-theme="modern"] .v7-page-metrics {
     width: 100%;
   }
 }
 
 @media (max-width: 700px) {
-  .v7-page {
+  [data-reaparr-theme="modern"] .v7-page {
     padding: 13px 11px 38px;
   }
 
-  .v7-page-hero {
+  [data-reaparr-theme="modern"] .v7-page-hero {
     padding: 24px 20px;
     border-radius: 22px;
   }
 
-  .v7-page-title {
+  [data-reaparr-theme="modern"] .v7-page-title {
     font-size: 2.35rem;
   }
 
-  .v7-page-metrics {
+  [data-reaparr-theme="modern"] .v7-page-metrics {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .v7-page-metric {
+  [data-reaparr-theme="modern"] .v7-page-metric {
     min-width: 0;
   }
 
-  .v7-automation-form-grid {
+  [data-reaparr-theme="modern"] .v7-automation-form-grid {
     grid-template-columns: 1fr;
   }
 
   .v7-automation-savebar,
   .v7-stage-row,
   .v7-run-card__header,
-  .v7-automation-section__heading {
+  [data-reaparr-theme="modern"] .v7-automation-section__heading {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .v7-stage-row__side {
+  [data-reaparr-theme="modern"] .v7-stage-row__side {
     flex-wrap: wrap;
   }
 
-  .v7-run-card__stats {
+  [data-reaparr-theme="modern"] .v7-run-card__stats {
     justify-content: flex-start;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .v7-media-overview-shell .q-card {
+  [data-reaparr-theme="modern"] .v7-media-overview-shell .q-card {
     transition: none;
   }
 }

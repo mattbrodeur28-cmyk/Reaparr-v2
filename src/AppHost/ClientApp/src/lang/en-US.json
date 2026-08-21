@@ -848,6 +848,13 @@
 						"text": "This will change the language to almost everything. Text such as errors are unlikely to be translated. Any translation fixes or new languages are greatly appreciated, check www.reaparr.rocks for information on how you can add new languages.",
 						"title": "Pick your preferred language"
 					}
+				},
+				"appearance-settings": {
+					"theme": {
+						"label": "Theme",
+						"title": "Application theme",
+						"text": "Choose how Reaparr looks. Modern is the current design. Classic restores the original styling. The choice is stored in this browser, so it does not affect other devices or other users."
+					}
 				}
 			},
 			"accounts": {
@@ -1058,6 +1065,15 @@
 				"enable-servers-section": {
 					"header": "Enable Plex Servers",
 					"no-servers-disabled": "No Plex servers are currently disabled. To disable a server, go to Server Settings => Server Configuration and toggle Enabled. Any disabled servers will appear here, where you can re-enable them."
+				},
+				"appearance-settings": {
+					"header": "Appearance",
+					"theme": {
+						"modern": "Modern",
+						"modern-caption": "The current Reaparr look: hero headers, soft surfaces and accent gradients.",
+						"classic": "Classic",
+						"classic-caption": "The original Reaparr look, with the modern styling switched off."
+					}
 				}
 			}
 		},

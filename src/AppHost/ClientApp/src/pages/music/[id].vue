@@ -1,19 +1,21 @@
 <template>
 	<QPage class="v7-page v7-media-page">
-		<section class="v7-page-hero v7-page-hero--compact">
-			<div>
-				<div class="v7-page-kicker">
-					<q-icon name="mdi-music" />
-					{{ $t('pages.music.music-id.kicker') }}
+		<ThemeOnly>
+			<section class="v7-page-hero v7-page-hero--compact">
+				<div>
+					<div class="v7-page-kicker">
+						<q-icon name="mdi-music" />
+						{{ $t('pages.music.music-id.kicker') }}
+					</div>
+					<h1 class="v7-page-title">
+						{{ $t('pages.music.music-id.header') }}
+					</h1>
+					<p class="v7-page-subtitle">
+						{{ $t('pages.music.music-id.sub-header', { artists: library?.artistCount ?? 0, tracks: library?.trackCount ?? 0 }) }}
+					</p>
 				</div>
-				<h1 class="v7-page-title">
-					{{ $t('pages.music.music-id.header') }}
-				</h1>
-				<p class="v7-page-subtitle">
-					{{ $t('pages.music.music-id.sub-header', { artists: library?.artistCount ?? 0, tracks: library?.trackCount ?? 0 }) }}
-				</p>
-			</div>
-		</section>
+			</section>
+		</ThemeOnly>
 
 		<section class="v7-media-overview-shell q-pa-md">
 			<QLoading v-if="loading" />

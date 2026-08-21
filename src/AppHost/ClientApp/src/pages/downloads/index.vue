@@ -1,30 +1,32 @@
 <template>
 	<QPage class="v7-page v75-downloads-page">
-		<section class="v7-page-hero v7-page-hero--downloads">
-			<div>
-				<div class="v7-page-kicker">
-					<q-icon name="mdi-download-circle-outline" />
-					Transfer center
+		<ThemeOnly>
+			<section class="v7-page-hero v7-page-hero--downloads">
+				<div>
+					<div class="v7-page-kicker">
+						<q-icon name="mdi-download-circle-outline" />
+						Transfer center
+					</div>
+					<h1 class="v7-page-title">
+						Downloads
+					</h1>
+					<p class="v7-page-subtitle">
+						Follow active transfers, completed media, source servers and post-download processing from one clean workspace.
+					</p>
 				</div>
-				<h1 class="v7-page-title">
-					Downloads
-				</h1>
-				<p class="v7-page-subtitle">
-					Follow active transfers, completed media, source servers and post-download processing from one clean workspace.
-				</p>
-			</div>
 
-			<div class="v7-page-metrics">
-				<div class="v7-page-metric">
-					<span>Active</span>
-					<strong>{{ downloadStore.getActiveDownloadList().length }}</strong>
+				<div class="v7-page-metrics">
+					<div class="v7-page-metric">
+						<span>Active</span>
+						<strong>{{ downloadStore.getActiveDownloadList().length }}</strong>
+					</div>
+					<div class="v7-page-metric">
+						<span>Servers</span>
+						<strong>{{ downloadStore.getServersWithDownloads.length }}</strong>
+					</div>
 				</div>
-				<div class="v7-page-metric">
-					<span>Servers</span>
-					<strong>{{ downloadStore.getServersWithDownloads.length }}</strong>
-				</div>
-			</div>
-		</section>
+			</section>
+		</ThemeOnly>
 
 		<section
 			v-if="downloadStore.getServersWithDownloads.length > 0"

@@ -23,6 +23,7 @@ import {
 	useServerConnectionStore,
 	useServerStore,
 	useSettingsStore,
+	useThemeStore,
 	useSignalrStore,
 	useUpdateStore,
 	useAuthenticationStore,
@@ -96,6 +97,7 @@ export const useGlobalStore = defineStore(StoreNames.GlobalStore, () => {
 				useServerConnectionStore().setup(),
 				useServerStore().setup(),
 				useSettingsStore().setup(),
+				useThemeStore().setup(),
 				useSignalrStore().setup(),
 				useUpdateStore().setup(),
 			]).pipe(

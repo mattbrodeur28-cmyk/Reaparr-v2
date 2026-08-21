@@ -1,19 +1,21 @@
 <template>
 	<QPage class="v7-page v7-settings-page">
-		<section class="v7-page-hero v7-page-hero--compact v7-page-hero--integrations">
-			<div>
-				<div class="v7-page-kicker">
-					<q-icon name="mdi-connection" />
-					Connected ecosystem
+		<ThemeOnly>
+			<section class="v7-page-hero v7-page-hero--compact v7-page-hero--integrations">
+				<div>
+					<div class="v7-page-kicker">
+						<q-icon name="mdi-connection" />
+						Connected ecosystem
+					</div>
+					<h1 class="v7-page-title">
+						Integrations
+					</h1>
+					<p class="v7-page-subtitle">
+						Connect Sonarr, Radarr and TMDB, then configure post-download Plex and library reconciliation.
+					</p>
 				</div>
-				<h1 class="v7-page-title">
-					Integrations
-				</h1>
-				<p class="v7-page-subtitle">
-					Connect Sonarr, Radarr and TMDB, then configure post-download Plex and library reconciliation.
-				</p>
-			</div>
-		</section>
+			</section>
+		</ThemeOnly>
 
 		<section class="v7-settings-stack">
 			<q-expansion-item

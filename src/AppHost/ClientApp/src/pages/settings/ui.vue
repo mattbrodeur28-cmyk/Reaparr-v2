@@ -1,5 +1,6 @@
 <template>
 	<QPage>
+		<AppearanceSection />
 		<GeneralSection />
 		<LanguageSection />
 		<DateAndTimeSection />
