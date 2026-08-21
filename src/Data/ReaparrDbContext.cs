@@ -218,6 +218,8 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
         _pathProvider = pathProvider;
         _appRuntimeInfo = appRuntimeInfo;
         DatabaseName = pathProvider.DatabaseName;
+
+        DbContextInstrumentation.OnCreated();
     }
 
     /// <summary>
@@ -235,6 +237,8 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
         _pathProvider = pathProvider;
         _appRuntimeInfo = appRuntimeInfo;
         DatabaseName = pathProvider.DatabaseName;
+
+        DbContextInstrumentation.OnCreated();
     }
 
     /// <summary>
@@ -251,6 +255,8 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
         _pathProvider = pathProvider;
         _appRuntimeInfo = appRuntimeInfo;
         DatabaseName = databaseName;
+
+        DbContextInstrumentation.OnCreated();
 
         Database.OpenConnection();
     }
@@ -336,4 +342,18 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
 
     public new Task<int> SaveChangesAsync(CancellationToken cancellationToken = new()) =>
         this.SaveChangesSerializedAsync(8, cancellationToken);
+
+    // Counted so DbContextInstrumentation.Live reports created-minus-disposed. Deliberately no
+    // finalizer here - EF warns against it, and it would cause resurrection and gen-2 promotion.
+    public override void Dispose()
+    {
+        DbContextInstrumentation.OnDisposed();
+        base.Dispose();
+    }
+
+    public override ValueTask DisposeAsync()
+    {
+        DbContextInstrumentation.OnDisposed();
+        return base.DisposeAsync();
+    }
 }
