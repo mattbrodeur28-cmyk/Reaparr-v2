@@ -1,0 +1,83 @@
+name: Build Branch Docker Image
+
+# Builds a deployable image for the long-lived branches.
+#
+# This exists separately from dev-release.yml because that workflow does far more than build an
+# image - semantic-release versioning, GitHub releases, desktop installers, DockerHub, Discord -
+# and needs secrets this repository does not have (GH_TOKEN, DOCKER_USERNAME/PASSWORD, the two
+# DISCORD webhooks) plus four GIT_AUTHOR/COMMITTER variables. This one needs none of that: it
+# pushes to GHCR with the automatically provided GITHUB_TOKEN, which is the same approach the
+# feature-branch image workflows already used successfully here.
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths-ignore:
+      - '.idea/**'
+      - '.run/**'
+      - '.vscode/**'
+      - 'docs/**'
+      - 'plans/**'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  # Per branch, so a main build is never cancelled by a dev push.
+  group: branch-docker-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    name: Build and push ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: meta
+        shell: bash
+        run: |
+          # dev builds publish :dev, main builds publish :latest.
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          # The commit-sha tag is what makes a bad deploy diagnosable - the moving tag alone
+          # cannot tell you which build a container is actually running.
+          tags: |
+            ghcr.io/mattbrodeur28-cmyk/reaparr-v2:${{ steps.meta.outputs.tag }}
+            ghcr.io/mattbrodeur28-cmyk/reaparr-v2:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=1.0.0-${{ steps.meta.outputs.tag }}.${{ github.run_number }}
+            INFORMATIONAL_VERSION=${{ github.sha }}
+            BUILDPLATFORM=linux/amd64
+            TARGETPLATFORM=linux/amd64
