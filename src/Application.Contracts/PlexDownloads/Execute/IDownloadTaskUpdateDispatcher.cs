@@ -3,6 +3,11 @@ namespace Reaparr.Application.Contracts;
 public interface IDownloadTaskUpdateDispatcher
 {
     /// <summary>
+    /// Entry counts for this dispatcher's in-memory tracking dictionaries, for leak diagnostics.
+    /// </summary>
+    TrackedCollectionSizes GetCollectionSizes();
+
+    /// <summary>
     /// Handles a download status change by persisting status updates and scheduling immediate/periodic patch updates.
     /// </summary>
     Task OnStatusChangedAsync(

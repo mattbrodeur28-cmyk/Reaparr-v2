@@ -20,12 +20,19 @@ public class AppRuntimeInfo : IAppRuntimeInfo
             : 5000;
 
     /// <summary>
-    /// Gets the configured Serilog log level from <c>LOG_LEVEL</c>. Defaults to <see cref="LogEventLevel.Debug"/>.
+    /// Gets the configured Serilog log level from <c>LOG_LEVEL</c>. Defaults to
+    /// <see cref="LogEventLevel.Information"/>.
     /// </summary>
+    /// <remarks>
+    /// This defaulted to Debug, which meant a production container rendered a message template,
+    /// buffered an event, and fired a SignalR hub invocation for every Debug line the download
+    /// path emits - several per second per active transfer. Set <c>LOG_LEVEL=Debug</c> to get the
+    /// old behaviour back when diagnosing something.
+    /// </remarks>
     public LogEventLevel LogLevel =>
         Enum.TryParse<LogEventLevel>(GetEnvironmentVariable(EnvKeys.LogLevel), true, out var logLevel)
             ? logLevel
-            : LogEventLevel.Debug;
+            : LogEventLevel.Information;
 
     /// <inheritdoc/>
     public bool IsUnmasked => IsTrue(GetEnvironmentVariable(EnvKeys.Unmasked));

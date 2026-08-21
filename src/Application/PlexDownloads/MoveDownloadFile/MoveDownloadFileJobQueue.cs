@@ -54,6 +54,24 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
             : DownloadLane.General;
 
     /// <inheritdoc/>
+    public TrackedCollectionSizes GetCollectionSizes()
+    {
+        int failures;
+        lock (_moveFailures)
+            failures = _moveFailures.Count;
+
+        return new TrackedCollectionSizes
+        {
+            Owner = nameof(MoveDownloadFileJobQueue),
+            Counts = new Dictionary<string, int>
+            {
+                ["moveFailures"] = failures,
+                ["moveReservations"] = _moveReservations.Count,
+            },
+        };
+    }
+
+    /// <inheritdoc/>
     public void RegisterMoveFailure(Guid downloadTaskId)
     {
         lock (_moveFailures)
@@ -149,6 +167,22 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
             var generalSlots = Math.Max(0, maxMovers - activeGeneralMovers);
             var musicSlots = Math.Max(0, _musicMoverSlots - activeMusicMovers);
 
+            // Prune BEFORE the cap check below. This used to sit further down, after the early
+            // return, so under sustained mover saturation expired cooldowns were never dropped -
+            // precisely the condition where the dictionary grows fastest.
+            HashSet<Guid> cooldownIds;
+            lock (_moveFailures)
+            {
+                var cooldownCutoff = DateTime.UtcNow;
+                foreach (var (failedId, failure) in _moveFailures.ToList())
+                {
+                    if (failure.RetryAfterUtc <= cooldownCutoff)
+                        _moveFailures.Remove(failedId);
+                }
+
+                cooldownIds = _moveFailures.Keys.ToHashSet();
+            }
+
             if (generalSlots == 0 && musicSlots == 0)
             {
                 _log.Here()
@@ -210,20 +244,6 @@ public class MoveDownloadFileJobQueue : IMoveDownloadFileQueue
                     x.CreatedAt,
                     IsDownloadFinished = x.DownloadStatus == DownloadStatus.DownloadFinished,
                 });
-
-            HashSet<Guid> cooldownIds;
-            lock (_moveFailures)
-            {
-                // Drop elapsed cooldowns so the dictionary cannot grow without bound.
-                var cooldownCutoff = DateTime.UtcNow;
-                foreach (var (failedId, failure) in _moveFailures.ToList())
-                {
-                    if (failure.RetryAfterUtc <= cooldownCutoff)
-                        _moveFailures.Remove(failedId);
-                }
-
-                cooldownIds = _moveFailures.Keys.ToHashSet();
-            }
 
             var blockedIds = runningIds.Concat(_moveReservations.Keys).Concat(cooldownIds).ToHashSet();
 

@@ -3,6 +3,11 @@ namespace Reaparr.Application.Contracts;
 public interface IMoveDownloadFileQueue
 {
     /// <summary>
+    /// Entry counts for this queue's in-memory tracking dictionaries, for leak diagnostics.
+    /// </summary>
+    TrackedCollectionSizes GetCollectionSizes();
+
+    /// <summary>
     /// Will check for any downloadTask that has finished downloading and start a moveDownloadJob for it.
     /// </summary>
     /// <returns> Result with the DownloadTaskKey that was started or a warning if no DownloadTask was found. </returns>

@@ -38,8 +38,26 @@ public class SignalRLogConfig : LogConfig
         Log.Logger = GetExtendedConfiguration(minimumLogLevel)
             .WriteTo.SignalR<LogHub>(
                 app.Services,
-                (context, _, logEvent) =>
-                    context.Clients.All.SendAsync(nameof(ILogHub.LogEvent), logEvent.ToLiveLogEvent())
+                (context, formatProvider, logEvent) =>
+                    // The returned Task used to be dropped on the floor. This sink has no batching
+                    // queue, so one hub invocation is issued per log line per connected client, and
+                    // a stalled client meant faults that nobody ever observed. Observing them here
+                    // does not batch the sends, but it stops failures vanishing silently.
+                    //
+                    // The volume problem is largely addressed by the default log level now being
+                    // Information rather than Debug. Genuine batching needs a new
+                    // ILogHub.LogEvents(IReadOnlyList<..>) method and a matching frontend change.
+                    context
+                        .Clients.All.SendAsync(nameof(ILogHub.LogEvent), logEvent.ToLiveLogEvent())
+                        .ContinueWith(
+                            static task =>
+                            {
+                                // Touching Exception marks the fault observed so a stalled client
+                                // cannot surface later as an UnobservedTaskException.
+                                _ = task.Exception;
+                            },
+                            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously
+                        )
             )
             .CreateLogger();
 }

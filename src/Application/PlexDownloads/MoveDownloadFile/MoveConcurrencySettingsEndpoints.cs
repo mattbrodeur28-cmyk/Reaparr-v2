@@ -51,22 +51,48 @@ internal static class MoveConcurrencySettingsFile
     private static string GetPath(IPathProvider pathProvider) =>
         Path.Combine(pathProvider.ConfigDirectory, "ReaparrMoveConcurrency.json");
 
+    // Cached because CheckMoveDownloadFileJobQueue calls Load on every single admission check -
+    // which meant a file read plus a JSON deserialize per check, for a file that changes only when
+    // someone edits a setting. Keyed on last-write-time so an external edit is still picked up.
+    private static MoveConcurrencySettingsDTO? _cached;
+    private static DateTime _cachedWriteTimeUtc;
+    private static string? _cachedPath;
+
     public static MoveConcurrencySettingsDTO Load(IPathProvider pathProvider)
     {
         lock (_sync)
         {
             var path = GetPath(pathProvider);
             if (!File.Exists(path))
-                return Normalize(new MoveConcurrencySettingsDTO());
+            {
+                // Cache the default too, so a missing file does not mean a File.Exists probe per check.
+                if (_cached is null || _cachedPath != path || _cachedWriteTimeUtc != DateTime.MinValue)
+                {
+                    _cached = Normalize(new MoveConcurrencySettingsDTO());
+                    _cachedPath = path;
+                    _cachedWriteTimeUtc = DateTime.MinValue;
+                }
+
+                return _cached;
+            }
 
             try
             {
+                var writeTimeUtc = File.GetLastWriteTimeUtc(path);
+                if (_cached is not null && _cachedPath == path && _cachedWriteTimeUtc == writeTimeUtc)
+                    return _cached;
+
                 var json = File.ReadAllText(path);
                 var settings = JsonSerializer.Deserialize<MoveConcurrencySettingsDTO>(
                     json,
                     _jsonOptions
                 );
-                return Normalize(settings ?? new MoveConcurrencySettingsDTO());
+
+                _cached = Normalize(settings ?? new MoveConcurrencySettingsDTO());
+                _cachedPath = path;
+                _cachedWriteTimeUtc = writeTimeUtc;
+
+                return _cached;
             }
             catch
             {
@@ -90,6 +116,10 @@ internal static class MoveConcurrencySettingsFile
             var tempPath = path + ".tmp";
             File.WriteAllText(tempPath, JsonSerializer.Serialize(normalized, _jsonOptions));
             File.Move(tempPath, path, overwrite: true);
+
+            _cached = normalized;
+            _cachedPath = path;
+            _cachedWriteTimeUtc = File.GetLastWriteTimeUtc(path);
 
             return normalized;
         }
@@ -141,13 +171,8 @@ internal static class MoveConcurrencyStatusBuilder
             ).Count;
         }
 
-        using var process = Process.GetCurrentProcess();
-        var gcInfo = GC.GetGCMemoryInfo();
-        var liveManagedBytes = GC.GetTotalMemory(forceFullCollection: false);
-        var totalAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
-
-        var (containerMemoryBytes, containerFileCacheBytes, containerAnonymousBytes) =
-            ReadCgroupMemory();
+        // Shared with the diagnostics endpoint - see ProcessMemorySnapshot.
+        var memory = ProcessMemorySnapshot.Capture();
 
         return new MoveConcurrencyStatusDTO
         {
@@ -155,93 +180,23 @@ internal static class MoveConcurrencyStatusBuilder
             FairAcrossServers = true,
             ActiveDownloads = activeDownloads,
             ActiveMovers = activeMovers,
-            ProcessWorkingSetBytes = process.WorkingSet64,
-            ProcessPrivateMemoryBytes = process.PrivateMemorySize64,
-            ManagedHeapBytes = gcInfo.HeapSizeBytes,
-            LiveManagedBytes = liveManagedBytes,
-            GcHeapSizeBytes = gcInfo.HeapSizeBytes,
-            GcCommittedBytes = gcInfo.TotalCommittedBytes,
-            GcFragmentedBytes = gcInfo.FragmentedBytes,
-            TotalAllocatedBytes = totalAllocatedBytes,
-            Gen0Collections = GC.CollectionCount(0),
-            Gen1Collections = GC.CollectionCount(1),
-            Gen2Collections = GC.CollectionCount(2),
-            ContainerMemoryBytes = containerMemoryBytes,
-            ContainerFileCacheBytes = containerFileCacheBytes,
-            ContainerAnonymousBytes = containerAnonymousBytes,
+            ProcessWorkingSetBytes = memory.WorkingSetBytes,
+            ProcessPrivateMemoryBytes = memory.PrivateMemoryBytes,
+            ManagedHeapBytes = memory.ManagedHeapBytes,
+            LiveManagedBytes = memory.LiveManagedBytes,
+            GcHeapSizeBytes = memory.ManagedHeapBytes,
+            GcCommittedBytes = memory.GcCommittedBytes,
+            GcFragmentedBytes = memory.GcFragmentedBytes,
+            TotalAllocatedBytes = memory.TotalAllocatedBytes,
+            Gen0Collections = memory.Gen0Collections,
+            Gen1Collections = memory.Gen1Collections,
+            Gen2Collections = memory.Gen2Collections,
+            ContainerMemoryBytes = memory.ContainerMemoryBytes,
+            ContainerFileCacheBytes = memory.ContainerFileCacheBytes,
+            ContainerAnonymousBytes = memory.ContainerAnonymousBytes,
         };
     }
 
-    private static (long Total, long FileCache, long Anonymous) ReadCgroupMemory()
-    {
-        // Docker on modern Unraid normally exposes cgroup v2. A v1 fallback is
-        // included so the diagnostics remain useful on older hosts.
-        var v2Current = "/sys/fs/cgroup/memory.current";
-        var v2Stat = "/sys/fs/cgroup/memory.stat";
-
-        if (File.Exists(v2Current))
-        {
-            return (
-                ReadLongFile(v2Current),
-                ReadMemoryStatValue(v2Stat, "file"),
-                ReadMemoryStatValue(v2Stat, "anon")
-            );
-        }
-
-        var v1Current = "/sys/fs/cgroup/memory/memory.usage_in_bytes";
-        var v1Stat = "/sys/fs/cgroup/memory/memory.stat";
-
-        if (File.Exists(v1Current))
-        {
-            return (
-                ReadLongFile(v1Current),
-                ReadMemoryStatValue(v1Stat, "cache"),
-                ReadMemoryStatValue(v1Stat, "rss")
-            );
-        }
-
-        return (0, 0, 0);
-    }
-
-    private static long ReadLongFile(string path)
-    {
-        try
-        {
-            return long.TryParse(File.ReadAllText(path).Trim(), out var value) ? value : 0;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
-
-    private static long ReadMemoryStatValue(string path, string key)
-    {
-        try
-        {
-            if (!File.Exists(path))
-                return 0;
-
-            foreach (var line in File.ReadLines(path))
-            {
-                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (
-                    parts.Length == 2
-                    && parts[0] == key
-                    && long.TryParse(parts[1], out var value)
-                )
-                {
-                    return value;
-                }
-            }
-        }
-        catch
-        {
-            // Diagnostics are best effort.
-        }
-
-        return 0;
-    }
 }
 
 public sealed class GetMoveConcurrencySettingsEndpoint

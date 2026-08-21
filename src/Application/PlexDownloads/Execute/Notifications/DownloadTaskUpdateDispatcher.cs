@@ -18,10 +18,28 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
     private readonly ConcurrentDictionary<Guid, BufferedProgressUpdate> _progressByNodeId;
     private readonly ConcurrentDictionary<int, long> _sequenceByServer;
     private readonly ConcurrentDictionary<Guid, ProgressScopeKey> _scopeByNodeId;
-    private readonly ConcurrentDictionary<Guid, DownloadStatus> _statusByNodeId;
+    // Value carries a timestamp so terminal tombstones can be aged out. Without that this
+    // dictionary grew one entry per download-task node ever touched, forever.
+    private readonly ConcurrentDictionary<Guid, TrackedStatus> _statusByNodeId;
     private readonly ConcurrentDictionary<Guid, DownloadTaskProgress> _lastProgressLogByNodeId;
     private readonly ConcurrentDictionary<Guid, byte> _seenProgressNodes;
     private readonly Channel<BufferedProgressUpdate> _firstProgressChannel;
+    /// <inheritdoc/>
+    public TrackedCollectionSizes GetCollectionSizes() =>
+        new()
+        {
+            Owner = nameof(DownloadTaskUpdateDispatcher),
+            Counts = new Dictionary<string, int>
+            {
+                ["progressByNodeId"] = _progressByNodeId.Count,
+                ["sequenceByServer"] = _sequenceByServer.Count,
+                ["scopeByNodeId"] = _scopeByNodeId.Count,
+                ["statusByNodeId"] = _statusByNodeId.Count,
+                ["lastProgressLogByNodeId"] = _lastProgressLogByNodeId.Count,
+                ["seenProgressNodes"] = _seenProgressNodes.Count,
+            },
+        };
+
     private const long PROGRESS_LOG_DATA_THRESHOLD_BYTES = 1024 * 1024;
     private const decimal PROGRESS_LOG_PERCENTAGE_THRESHOLD = 1m;
 
@@ -44,7 +62,7 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
         _progressByNodeId = new ConcurrentDictionary<Guid, BufferedProgressUpdate>();
         _sequenceByServer = new ConcurrentDictionary<int, long>();
         _scopeByNodeId = new ConcurrentDictionary<Guid, ProgressScopeKey>();
-        _statusByNodeId = new ConcurrentDictionary<Guid, DownloadStatus>();
+        _statusByNodeId = new ConcurrentDictionary<Guid, TrackedStatus>();
         _lastProgressLogByNodeId = new ConcurrentDictionary<Guid, DownloadTaskProgress>();
         _seenProgressNodes = new ConcurrentDictionary<Guid, byte>();
         _firstProgressChannel = Channel.CreateUnbounded<BufferedProgressUpdate>(
@@ -69,7 +87,7 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
     {
         var result = await Result.Try(async Task () =>
         {
-            _statusByNodeId[key.Id] = newStatus;
+            _statusByNodeId[key.Id] = new TrackedStatus(newStatus, System.Environment.TickCount64);
 
             if (newStatus is DownloadStatus.Deleted)
             {
@@ -115,7 +133,7 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
             var rootKey = await dbContext.GetRootDownloadTaskKeyAsync(key, cancellationToken);
             if (rootKey is null)
             {
-                if (newStatus is DownloadStatus.Completed)
+                if (newStatus.IsTerminalForTracking())
                     ClearTerminalNodeTracking(key.Id);
                 return;
             }
@@ -147,7 +165,7 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
                 );
             }
 
-            if (newStatus is DownloadStatus.Completed)
+            if (newStatus.IsTerminalForTracking())
                 ClearTerminalNodeTracking(key.Id);
         });
 
@@ -163,7 +181,7 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
     )
     {
         if (
-            _statusByNodeId.GetValueOrDefault(key.Id)
+            _statusByNodeId.GetValueOrDefault(key.Id).Status
             is DownloadStatus.Paused
                 or DownloadStatus.AutoPaused
                 or DownloadStatus.Deleted
@@ -217,9 +235,32 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
 
         var result = await Result.Try(async Task () =>
         {
+            var tick = 0;
+
             while (await periodicTimer.WaitForNextTickAsync(stoppingToken))
             {
-                await FlushProgressAsync(stoppingToken);
+                tick++;
+
+                // Each flush reloads the download-task tree to recompute parent progress, which is
+                // several nested Includes. At one active file that is cheap and 1Hz keeps the UI
+                // smooth; with many files in flight it is the single most expensive thing this
+                // process does on a timer. Slow down proportionally - the UI barely notices a 2-3
+                // second refresh, and the DB very much notices the difference.
+                var activeNodes = _progressByNodeId.Count;
+                var flushEveryTicks = activeNodes switch
+                {
+                    <= ProgressFlushBusyThreshold => 1,
+                    <= ProgressFlushVeryBusyThreshold => 2,
+                    _ => 3,
+                };
+
+                if (tick % flushEveryTicks == 0)
+                    await FlushProgressAsync(stoppingToken);
+
+                // Amortized: the timer fires ~86,400 times a day, so the sweep runs once a minute
+                // rather than on every tick.
+                if (tick % TerminalStatusPruneIntervalTicks == 0)
+                    PruneTerminalStatuses();
             }
         });
 
@@ -227,6 +268,17 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
         {
             result.LogIfFailed();
         }
+
+        // One last flush with a fresh token. stoppingToken is already cancelled by now, so without
+        // this the in-flight tick is abandoned and up to a second of DirectDownloadSnapshot chunk
+        // offsets is lost - meaning a download resumes from further back than it needed to.
+        // Bounded, because this goes through the global SQLite write queue and shutdown has a
+        // fixed budget.
+        var finalFlush = await Result.Try(() =>
+            FlushProgressAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10))
+        );
+        if (finalFlush.IsFailed)
+            _log.Here().Warning("The final progress flush did not complete before shutdown");
 
         periodicTimer.Dispose();
         _statusChannel.Writer.TryComplete();
@@ -741,13 +793,75 @@ public class DownloadTaskUpdateDispatcher : BackgroundService, IDownloadTaskUpda
         );
     }
 
+    /// <summary>A status together with when it was recorded, so tombstones can be aged out.</summary>
+    private readonly record struct TrackedStatus(DownloadStatus Status, long StampTicks);
+
+    /// <summary>Active nodes up to which progress is flushed every tick.</summary>
+    private const int ProgressFlushBusyThreshold = 4;
+
+    /// <summary>Active nodes up to which progress is flushed every other tick.</summary>
+    private const int ProgressFlushVeryBusyThreshold = 12;
+
+    /// <summary>Flush ticks between terminal-tombstone sweeps. The flush timer runs at 1Hz.</summary>
+    private const int TerminalStatusPruneIntervalTicks = 60;
+
+    /// <summary>How long a terminal tombstone is kept before it can be evicted.</summary>
+    private static readonly TimeSpan _terminalStatusTtl = TimeSpan.FromMinutes(15);
+
+    /// <summary>Backstop cap, only reached if something pathological is happening.</summary>
+    private const int MaxTrackedStatuses = 50_000;
+
+    /// <summary>
+    /// Drops terminal status tombstones that are older than the TTL.
+    /// </summary>
+    /// <remarks>
+    /// The tombstone exists so a progress event still in flight when a task finished cannot
+    /// resurrect it. Those events arrive within seconds, so a 15 minute TTL keeps the guarantee
+    /// with three orders of magnitude of headroom while making the memory bound a function of
+    /// terminal transitions per 15 minutes rather than of all-time task count.
+    ///
+    /// Non-terminal entries are never aged out - those are live tasks, and evicting one is
+    /// precisely the resurrection this protects against.
+    /// </remarks>
+    private void PruneTerminalStatuses()
+    {
+        var now = System.Environment.TickCount64;
+        var ttlMs = (long)_terminalStatusTtl.TotalMilliseconds;
+
+        foreach (var (nodeId, tracked) in _statusByNodeId)
+        {
+            if (tracked.Status.IsTerminalForTracking() && now - tracked.StampTicks > ttlMs)
+                _statusByNodeId.TryRemove(nodeId, out _);
+        }
+
+        if (_statusByNodeId.Count <= MaxTrackedStatuses)
+            return;
+
+        // Pathological backstop: shed the oldest terminal entries first.
+        var excess = _statusByNodeId.Count - MaxTrackedStatuses;
+        foreach (var (nodeId, _) in _statusByNodeId
+            .Where(x => x.Value.Status.IsTerminalForTracking())
+            .OrderBy(x => x.Value.StampTicks)
+            .Take(excess))
+        {
+            _statusByNodeId.TryRemove(nodeId, out _);
+        }
+
+        _log.Here()
+            .Warning(
+                "Tracked download status count exceeded {MaxTrackedStatuses}; shed {Excess} oldest terminal entries",
+                MaxTrackedStatuses,
+                excess
+            );
+    }
+
     private void ClearTerminalNodeTracking(Guid nodeId)
     {
         _progressByNodeId.TryRemove(nodeId, out _);
         _scopeByNodeId.TryRemove(nodeId, out _);
-        // Keep the tiny terminal status tombstone so a late progress event cannot
-        // resurrect a Completed/Deleted task. It will be overwritten if the task
-        // is explicitly restarted.
+        // The terminal status tombstone is deliberately left in place so a late progress event
+        // cannot resurrect a finished task. It is overwritten on an explicit restart, and aged
+        // out by PruneTerminalStatuses so it can no longer accumulate forever.
         _lastProgressLogByNodeId.TryRemove(nodeId, out _);
         _seenProgressNodes.TryRemove(nodeId, out _);
     }
