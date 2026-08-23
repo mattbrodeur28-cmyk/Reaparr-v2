@@ -133,7 +133,14 @@ public class DirectPlexDownloadClient : IPlexDownloadClient
 
         if (ensureDirectoryResult.IsFailed)
         {
-            var statusResult = await SetDownloadStatusAsync(Domain.DownloadStatus.StorageError, ensureDirectoryResult);
+            // Only report StorageError when it actually is one. This used to be unconditional, so a
+            // missing download root, an empty path, or a permissions problem all surfaced to the user
+            // as "storage error" - pointing at disk space when the cause was configuration.
+            var failureStatus = ensureDirectoryResult.HasStorageError()
+                ? Domain.DownloadStatus.StorageError
+                : Domain.DownloadStatus.Error;
+
+            var statusResult = await SetDownloadStatusAsync(failureStatus, ensureDirectoryResult);
             if (statusResult.IsFailed)
                 return statusResult;
 

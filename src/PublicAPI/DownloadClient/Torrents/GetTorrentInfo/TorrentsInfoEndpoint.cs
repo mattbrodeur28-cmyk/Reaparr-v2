@@ -104,6 +104,37 @@ public record QBittorrentTorrentInfo
 
     [JsonPropertyName("last_activity")]
     public long LastActivity { get; set; }
+
+    /// <summary>
+    /// Connected seeds, and the swarm totals behind them.
+    /// </summary>
+    /// <remarks>
+    /// Reaparr is not a real torrent client - it streams from a Plex server - but the qBittorrent
+    /// clients in Sonarr and Radarr read these fields to decide whether a transfer has any source.
+    /// Omitting them meant every transfer was reported with zero peers, which those clients
+    /// display as "stalled, no connections" no matter what the state field says. Reporting a
+    /// single seed while a transfer is live is the honest equivalent: there is exactly one source,
+    /// the Plex server.
+    /// </remarks>
+    [JsonPropertyName("num_seeds")]
+    public int NumSeeds { get; set; }
+
+    [JsonPropertyName("num_complete")]
+    public int NumComplete { get; set; }
+
+    [JsonPropertyName("num_leechs")]
+    public int NumLeechs { get; set; }
+
+    [JsonPropertyName("num_incomplete")]
+    public int NumIncomplete { get; set; }
+
+    /// <summary>Bytes still to transfer. Clients use this alongside progress to detect completion.</summary>
+    [JsonPropertyName("amount_left")]
+    public long AmountLeft { get; set; }
+
+    /// <summary>Bytes transferred so far.</summary>
+    [JsonPropertyName("completed")]
+    public long Completed { get; set; }
 }
 
 public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest, List<QBittorrentTorrentInfo>>
@@ -215,6 +246,9 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
                 or DownloadStatus.MoveFinished
                 or DownloadStatus.DownloadFinished;
 
+        var isTransferLive =
+            file.DownloadStatus is DownloadStatus.Downloading or DownloadStatus.Moving or DownloadStatus.Queued;
+
         return new QBittorrentTorrentInfo
         {
             Hash = file.HashId!,
@@ -234,6 +268,14 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
             SeedingTimeLimit = -2,
             InactiveSeedingTimeLimit = -2,
             LastActivity = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            // One source - the Plex server - while the transfer is actually live. Reporting a peer
+            // for a paused or failed transfer would be misleading, so those stay at zero.
+            NumSeeds = isTransferLive ? 1 : 0,
+            NumComplete = isTransferLive ? 1 : 0,
+            NumLeechs = 0,
+            NumIncomplete = 0,
+            AmountLeft = Math.Max(0, file.DataTotal - file.DataReceived),
+            Completed = file.DataReceived,
         };
     }
 
@@ -323,9 +365,21 @@ public sealed class TorrentsInfoEndpoint : Endpoint<TorrentsInfoEndpointRequest,
             case DownloadStatus.Error:
             case DownloadStatus.MoveError:
             case DownloadStatus.ServerUnreachable:
+            // These six used to fall through to the default and report "stalledDL". Every one of
+            // them is a hard failure, so Sonarr and Radarr were told the transfer was merely slow
+            // rather than broken - they would sit waiting on it instead of failing the grab and
+            // trying another release.
+            case DownloadStatus.StorageError:
+            case DownloadStatus.AuthError:
+            case DownloadStatus.IntegrityError:
+            case DownloadStatus.DownloadClientError:
+            case DownloadStatus.SourceUnavailable:
                 return "error";
             case DownloadStatus.Moving:
                 return "moving";
+            // Transitional, not failed: the task is on its way back into the queue.
+            case DownloadStatus.Restarting:
+                return "queuedDL";
             case DownloadStatus.Unknown:
             default:
                 _log.Here()

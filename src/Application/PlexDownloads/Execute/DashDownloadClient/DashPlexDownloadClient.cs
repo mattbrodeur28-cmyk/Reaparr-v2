@@ -92,7 +92,12 @@ public class DashPlexDownloadClient : IPlexDownloadClient
         );
         if (ensureDirectoryResult.IsFailed)
         {
-            var storageErrorResult = await SetDownloadStatusAsync(DownloadStatus.StorageError, ensureDirectoryResult);
+            // See DirectPlexDownloadClient: only classify as StorageError when it really is one.
+            var failureStatus = ensureDirectoryResult.HasStorageError()
+                ? DownloadStatus.StorageError
+                : DownloadStatus.Error;
+
+            var storageErrorResult = await SetDownloadStatusAsync(failureStatus, ensureDirectoryResult);
             if (storageErrorResult.IsFailed)
                 return storageErrorResult.LogError();
 
