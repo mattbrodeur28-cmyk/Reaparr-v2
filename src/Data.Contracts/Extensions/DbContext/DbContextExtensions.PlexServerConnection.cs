@@ -27,7 +27,12 @@ public static partial class DbContextExtensions
 
         if (!plexServer.IsEnabled)
         {
-            return _log.Here().ErrorResult("Cannot choose PlexServer connection, server {ServerName} with id {Id} is disabled", plexServer.Name, plexServerId);
+            return _log.Here()
+                .ErrorResult(
+                    "Cannot choose PlexServer connection, server {ServerName} with id {Id} is disabled",
+                    plexServer.Name,
+                    plexServerId
+                );
         }
 
         var plexServerConnections = plexServer.PlexServerConnections;
@@ -149,16 +154,22 @@ public static partial class DbContextExtensions
         {
             var nonMainServerToken = await dbContext
                 .PlexAccountServers.Include(x => x.PlexAccount)
-                .FirstOrDefaultAsync(x => x.PlexServerId == plexServerId && !x.PlexAccount!.IsMain, cancellationToken);
+                .FirstOrDefaultAsync(
+                    x => x.PlexServerId == plexServerId && !x.PlexAccount!.IsMain && x.PlexAccount.IsValidated,
+                    cancellationToken
+                );
 
-            // Check if we have access with a non-main account
+            // Check if we have access with a validated non-main account
             if (nonMainServerToken != null)
                 return Result.Ok(nonMainServerToken.AuthToken);
 
-            // Fallback to a main-account access
+            // Fallback to a validated main-account access
             var mainServerToken = await dbContext
                 .PlexAccountServers.Include(x => x.PlexAccount)
-                .FirstOrDefaultAsync(x => x.PlexServerId == plexServerId, cancellationToken);
+                .FirstOrDefaultAsync(
+                    x => x.PlexServerId == plexServerId && x.PlexAccount!.IsValidated,
+                    cancellationToken
+                );
 
             if (mainServerToken != null)
                 return Result.Ok(mainServerToken.AuthToken);
@@ -167,6 +178,14 @@ public static partial class DbContextExtensions
                 .Fail($"Could not find any authenticationToken for PlexServer with id: {plexServerId}")
                 .LogError();
         }
+
+        var isAccountValidated = await dbContext.PlexAccounts.AnyAsync(
+            x => x.Id == plexAccountId && x.IsValidated,
+            cancellationToken
+        );
+
+        if (!isAccountValidated)
+            return Result.Fail($"PlexAccount with id: {plexAccountId} is not validated").LogError();
 
         var authToken = await dbContext.PlexAccountServers.FirstOrDefaultAsync(
             x => x.PlexAccountId == plexAccountId && x.PlexServerId == plexServerId,
