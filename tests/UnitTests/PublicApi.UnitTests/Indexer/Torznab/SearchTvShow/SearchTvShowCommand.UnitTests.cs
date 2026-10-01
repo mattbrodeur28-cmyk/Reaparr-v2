@@ -410,6 +410,69 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
     }
 
     [Test]
+    public async Task ShouldReturnSeasonEpisodes_WhenFilteredByImdbSeasonOnly()
+    {
+        // Arrange
+        await SetupDatabase(
+            3208,
+            config =>
+            {
+                config.PlexServerCount = 1;
+                config.PlexTvShowLibraryCount = 1;
+                config.TvShowCount = 1;
+                config.TvShowSeasonCount = 3;
+                config.TvShowEpisodeCount = 2;
+            }
+        );
+
+        var dbContext = IDbContext;
+        var targetEpisode = await dbContext
+            .PlexTvShowEpisodes.Include(e => e.TvShowSeason)
+            .Include(e => e.TvShow)
+            .OrderBy(e => e.Id)
+            .FirstAsync(CancellationToken);
+
+        var seasonNumber = targetEpisode.TvShowSeason!.SeasonNumber;
+        var imdb = targetEpisode.TvShow!.Guid_IMDB!;
+        var expectedEpisodeNumbers = await dbContext
+            .PlexTvShowEpisodes.Include(e => e.TvShowSeason)
+            .Where(e => e.TvShowId == targetEpisode.TvShowId)
+            .Where(e => e.TvShowSeason!.SeasonNumber == seasonNumber)
+            .OrderBy(e => e.Id)
+            .Select(e => e.EpisodeNumber.ToString())
+            .ToListAsync(CancellationToken);
+
+        var cmd = new SearchTvShowCommand
+        {
+            Query = string.Empty,
+            Season = seasonNumber,
+            Episode = 0,
+            Limit = 100,
+            Offset = 0,
+            IMDB_ID = imdb.Replace("tt", string.Empty),
+            TMDB_ID = 0,
+            TVDB_ID = 0,
+        };
+
+        // Act
+        var result = await Sut.ExecuteAsync(cmd, CancellationToken);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Value.Channel.Items.ShouldNotBeEmpty();
+        result.Value.Channel.Items.Count.ShouldBe(expectedEpisodeNumbers.Count);
+        result
+            .Value.Channel.Items.All(i =>
+                i.Attributes.Any(a => a.Name == "season" && a.Value == seasonNumber.ToString())
+            )
+            .ShouldBeTrue();
+        result
+            .Value.Channel.Items.Select(i => i.Attributes.Single(a => a.Name == "episode").Value)
+            .ToList()
+            .ShouldBe(expectedEpisodeNumbers);
+    }
+
+    [Test]
     public void ShouldValidate_WhenPagingOnlyProvided()
     {
         // Arrange
@@ -482,6 +545,56 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
         // Assert
         result.IsValid.ShouldBeTrue();
         result.Errors.ShouldBeEmpty();
+    }
+
+    [Test]
+    public void ShouldPassValidation_WhenSeasonOnlyWithImdbProvided()
+    {
+        // Arrange
+        var validator = new SearchTvShowCommandValidator();
+        var cmd = new SearchTvShowCommand
+        {
+            Query = string.Empty,
+            Season = 1,
+            Episode = 0,
+            Limit = 10,
+            Offset = 0,
+            IMDB_ID = "12345",
+            TMDB_ID = 0,
+            TVDB_ID = 0,
+        };
+
+        // Act
+        var result = validator.Validate(cmd);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Errors.ShouldBeEmpty();
+    }
+
+    [Test]
+    public void ShouldFailValidation_WhenEpisodeProvidedWithoutSeason()
+    {
+        // Arrange
+        var validator = new SearchTvShowCommandValidator();
+        var cmd = new SearchTvShowCommand
+        {
+            Query = string.Empty,
+            Season = 0,
+            Episode = 2,
+            Limit = 10,
+            Offset = 0,
+            IMDB_ID = "12345",
+            TMDB_ID = 0,
+            TVDB_ID = 0,
+        };
+
+        // Act
+        var result = validator.Validate(cmd);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldNotBeEmpty();
     }
 
     [Test]
