@@ -69,6 +69,7 @@ public class GetDirectDownloadUrlCommandHandler : ICommandHandler<GetDirectDownl
             fallbackProbeCancellationTokenSource.Cancel();
             return Result
                 .Fail($"Plex download URL probe failed with status {(int)statusCode} ({statusCode})")
+                .AddStatusCode(statusCode)
                 .LogError();
         }
 
@@ -85,6 +86,7 @@ public class GetDirectDownloadUrlCommandHandler : ICommandHandler<GetDirectDownl
                     + $"Default URL status: {(int)initialProbeResult.Value.StatusCode} ({initialProbeResult.Value.StatusCode}). "
                     + $"Fallback URL status: {(int)fallbackProbeResult.Value.StatusCode} ({fallbackProbeResult.Value.StatusCode})"
             )
+            .AddStatusCode(fallbackProbeResult.Value.StatusCode)
             .LogError();
     }
 

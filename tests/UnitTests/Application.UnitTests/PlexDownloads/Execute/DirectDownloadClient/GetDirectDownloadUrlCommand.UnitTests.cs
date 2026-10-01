@@ -97,6 +97,68 @@ public class GetDirectDownloadUrlCommandUnitTests : BaseUnitTest<GetDirectDownlo
     }
 
     [Test]
+    public async Task ShouldReturnNotFoundStatus_WhenInitialProbeReturnsNotFound()
+    {
+        // Arrange
+        await SetupDatabase(
+            90207,
+            config =>
+            {
+                config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.MovieDownloadTasksCount = 1;
+            }
+        );
+
+        var downloadTask = await IDbContext.DownloadTaskMovieFile.FirstAsync(CancellationToken);
+        SetupHttpClientFactory(new DownloadFlagStatusCodeHandler(HttpStatusCode.NotFound, HttpStatusCode.OK));
+
+        var sut = CreateSut();
+
+        // Act
+        var result = await sut.ExecuteAsync(
+            new GetDirectDownloadUrlCommand(downloadTask.PlexServerId, downloadTask.FileLocationUrl),
+            CancellationToken
+        );
+
+        // Assert
+        result.IsFailed.ShouldBeTrue();
+        result.Has404NotFoundError().ShouldBeTrue();
+        Mock.Mock<IHttpClientFactory>().Verify(x => x.CreateClient(It.IsAny<string>()), Times.Once());
+    }
+
+    [Test]
+    public async Task ShouldReturnFallbackStatus_WhenFallbackProbeFails()
+    {
+        // Arrange
+        await SetupDatabase(
+            90208,
+            config =>
+            {
+                config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.MovieDownloadTasksCount = 1;
+            }
+        );
+
+        var downloadTask = await IDbContext.DownloadTaskMovieFile.FirstAsync(CancellationToken);
+        SetupHttpClientFactory(new DownloadFlagStatusCodeHandler(HttpStatusCode.Forbidden, HttpStatusCode.NotFound));
+
+        var sut = CreateSut();
+
+        // Act
+        var result = await sut.ExecuteAsync(
+            new GetDirectDownloadUrlCommand(downloadTask.PlexServerId, downloadTask.FileLocationUrl),
+            CancellationToken
+        );
+
+        // Assert
+        result.IsFailed.ShouldBeTrue();
+        result.Has404NotFoundError().ShouldBeTrue();
+        Mock.Mock<IHttpClientFactory>().Verify(x => x.CreateClient(It.IsAny<string>()), Times.Once());
+    }
+
+    [Test]
     public async Task ShouldRetryTransientProbeFailuresAndReturnUrl_WhenProbeEventuallySucceeds()
     {
         // Arrange
@@ -229,13 +291,33 @@ public class GetDirectDownloadUrlCommandUnitTests : BaseUnitTest<GetDirectDownlo
 
     private void SetupHttpClientFactory(params HttpStatusCode[] statuses)
     {
-        var handler = new SequenceStatusCodeHandler(statuses);
+        SetupHttpClientFactory(new SequenceStatusCodeHandler(statuses));
+    }
+
+    private void SetupHttpClientFactory(HttpMessageHandler handler)
+    {
         var retryHandler = new DefaultHttpClientRetryHandler(new LoggerConfiguration().CreateLogger())
         {
             InnerHandler = handler,
         };
         var httpClient = new HttpClient(retryHandler);
         Mock.Mock<IHttpClientFactory>().Setup(x => x.CreateClient(It.IsAny<string>())).Returns(httpClient);
+    }
+
+    private sealed class DownloadFlagStatusCodeHandler(
+        HttpStatusCode defaultProbeStatusCode,
+        HttpStatusCode fallbackProbeStatusCode
+    ) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            var hasDownloadFlag = request.RequestUri?.Query.Contains("download=1", StringComparison.Ordinal) == true;
+            var statusCode = hasDownloadFlag ? fallbackProbeStatusCode : defaultProbeStatusCode;
+            return Task.FromResult(new HttpResponseMessage(statusCode) { RequestMessage = request });
+        }
     }
 
     private sealed class SequenceStatusCodeHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
