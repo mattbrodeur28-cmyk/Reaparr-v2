@@ -84,6 +84,8 @@ interface IDiscoverWantedItem {
 	year: number;
 	mediaType: string;
 	source: string;
+	/** 'Missing' for wanted/missing, 'Upgrade' for wanted/cutoff. */
+	reason?: string;
 	tmdbId?: number | null;
 	tvdbId?: number | null;
 	imdbId?: string | null;

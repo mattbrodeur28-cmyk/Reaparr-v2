@@ -9,9 +9,22 @@ public sealed record DiscoverWantedItemDTO
     public int Year { get; init; }
     public required string MediaType { get; init; }
     public required string Source { get; init; }
+
+    /// <summary>
+    /// Which Radarr/Sonarr wanted feed produced this item:
+    /// <see cref="DiscoverWantedReasons.Missing"/> for <c>wanted/missing</c> or
+    /// <see cref="DiscoverWantedReasons.Upgrade"/> for <c>wanted/cutoff</c>.
+    /// </summary>
+    public required string Reason { get; init; }
     public int? TmdbId { get; init; }
     public int? TvdbId { get; init; }
     public string? ImdbId { get; init; }
+}
+
+public static class DiscoverWantedReasons
+{
+    public const string Missing = "Missing";
+    public const string Upgrade = "Upgrade";
 }
 
 public sealed record GetDiscoverWantedEndpointResponse
@@ -63,34 +76,46 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
             SonarrConfigured = _sonarrSettings.IsConfigured,
         };
 
+        // Both arrs expose two wanted feeds. wanted/missing is "not downloaded at
+        // all", wanted/cutoff is "downloaded below the quality cutoff", which is
+        // what Discover surfaces as an upgrade. Querying only wanted/missing left
+        // every arr upgrade invisible, so the Discover upgrade view had nothing to
+        // match against. Each feed is collected independently so one failing feed
+        // does not discard the other.
         if (_radarrSettings.IsConfigured)
         {
-            try
-            {
-                response.Items.AddRange(await LoadRadarrMissingAsync(ct));
-            }
-            catch (Exception ex)
-            {
-                _log.Here().Warning(ex, "Failed to load Radarr wanted/missing feed for Discover");
-                response.Warnings.Add("Radarr wanted items could not be loaded.");
-            }
+            await CollectAsync(
+                response,
+                "Radarr",
+                "missing",
+                () => LoadRadarrWantedAsync("missing", DiscoverWantedReasons.Missing, ct)
+            );
+            await CollectAsync(
+                response,
+                "Radarr",
+                "cutoff",
+                () => LoadRadarrWantedAsync("cutoff", DiscoverWantedReasons.Upgrade, ct)
+            );
         }
 
         if (_sonarrSettings.IsConfigured)
         {
-            try
-            {
-                response.Items.AddRange(await LoadSonarrMissingAsync(ct));
-            }
-            catch (Exception ex)
-            {
-                _log.Here().Warning(ex, "Failed to load Sonarr wanted/missing feed for Discover");
-                response.Warnings.Add("Sonarr wanted items could not be loaded.");
-            }
+            await CollectAsync(
+                response,
+                "Sonarr",
+                "missing",
+                () => LoadSonarrWantedAsync("missing", DiscoverWantedReasons.Missing, ct)
+            );
+            await CollectAsync(
+                response,
+                "Sonarr",
+                "cutoff",
+                () => LoadSonarrWantedAsync("cutoff", DiscoverWantedReasons.Upgrade, ct)
+            );
         }
 
-        var deduplicated = response.Items
-            .GroupBy(GetIdentityKey, StringComparer.OrdinalIgnoreCase)
+        var deduplicated = response
+            .Items.GroupBy(GetIdentityKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
 
@@ -100,7 +125,29 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         await Send.OkAsync(response, ct);
     }
 
-    private async Task<List<DiscoverWantedItemDTO>> LoadRadarrMissingAsync(CancellationToken ct)
+    private async Task CollectAsync(
+        GetDiscoverWantedEndpointResponse response,
+        string appName,
+        string feed,
+        Func<Task<List<DiscoverWantedItemDTO>>> load
+    )
+    {
+        try
+        {
+            response.Items.AddRange(await load());
+        }
+        catch (Exception ex)
+        {
+            _log.Here().Warning(ex, "Failed to load {AppName} wanted/{Feed} feed for Discover", appName, feed);
+            response.Warnings.Add($"{appName} wanted/{feed} items could not be loaded.");
+        }
+    }
+
+    private async Task<List<DiscoverWantedItemDTO>> LoadRadarrWantedAsync(
+        string feed,
+        string reason,
+        CancellationToken ct
+    )
     {
         var result = new List<DiscoverWantedItemDTO>();
         var page = 1;
@@ -108,7 +155,7 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         while (true)
         {
             var url = new Url(_radarrSettings.RadarrBaseUrl.TrimEnd('/'))
-                .AppendPathSegments("api", "v3", "wanted", "missing")
+                .AppendPathSegments("api", "v3", "wanted", feed)
                 .SetQueryParam("page", page)
                 .SetQueryParam("pageSize", PageSize)
                 .SetQueryParam("monitored", true);
@@ -126,9 +173,7 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
             var root = document.RootElement;
-            var records = root.TryGetProperty("records", out var recordElement)
-                ? recordElement
-                : default;
+            var records = root.TryGetProperty("records", out var recordElement) ? recordElement : default;
 
             if (records.ValueKind != JsonValueKind.Array)
                 break;
@@ -146,6 +191,7 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
                         Year = GetInt(record, "year"),
                         MediaType = "Movie",
                         Source = "Radarr",
+                        Reason = reason,
                         TmdbId = GetNullableInt(record, "tmdbId"),
                         ImdbId = NullIfBlank(GetString(record, "imdbId")),
                     }
@@ -162,7 +208,11 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         return result;
     }
 
-    private async Task<List<DiscoverWantedItemDTO>> LoadSonarrMissingAsync(CancellationToken ct)
+    private async Task<List<DiscoverWantedItemDTO>> LoadSonarrWantedAsync(
+        string feed,
+        string reason,
+        CancellationToken ct
+    )
     {
         var result = new List<DiscoverWantedItemDTO>();
         var page = 1;
@@ -170,7 +220,7 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         while (true)
         {
             var url = new Url(_sonarrSettings.SonarrBaseUrl.TrimEnd('/'))
-                .AppendPathSegments("api", "v3", "wanted", "missing")
+                .AppendPathSegments("api", "v3", "wanted", feed)
                 .SetQueryParam("page", page)
                 .SetQueryParam("pageSize", PageSize)
                 .SetQueryParam("includeSeries", true)
@@ -189,19 +239,14 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
             var root = document.RootElement;
-            var records = root.TryGetProperty("records", out var recordElement)
-                ? recordElement
-                : default;
+            var records = root.TryGetProperty("records", out var recordElement) ? recordElement : default;
 
             if (records.ValueKind != JsonValueKind.Array)
                 break;
 
             foreach (var record in records.EnumerateArray())
             {
-                if (
-                    !record.TryGetProperty("series", out var series)
-                    || series.ValueKind != JsonValueKind.Object
-                )
+                if (!record.TryGetProperty("series", out var series) || series.ValueKind != JsonValueKind.Object)
                     continue;
 
                 var title = GetString(series, "title");
@@ -215,6 +260,7 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
                         Year = GetInt(series, "year"),
                         MediaType = "TvShow",
                         Source = "Sonarr",
+                        Reason = reason,
                         TmdbId = GetNullableInt(series, "tmdbId"),
                         TvdbId = GetNullableInt(series, "tvdbId"),
                         ImdbId = NullIfBlank(GetString(series, "imdbId")),
@@ -240,7 +286,9 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
         return request;
     }
 
-    private static string GetIdentityKey(DiscoverWantedItemDTO item)
+    private static string GetIdentityKey(DiscoverWantedItemDTO item) => $"{item.Reason}:{GetMediaIdentityKey(item)}";
+
+    private static string GetMediaIdentityKey(DiscoverWantedItemDTO item)
     {
         if (item.MediaType == "Movie" && item.TmdbId.HasValue)
             return $"movie:tmdb:{item.TmdbId.Value}";
@@ -259,36 +307,27 @@ public sealed class GetDiscoverWantedEndpoint : EndpointWithoutRequest<GetDiscov
 
     private static string GetString(JsonElement element, string property)
     {
-        return element.TryGetProperty(property, out var value)
-            && value.ValueKind == JsonValueKind.String
-                ? value.GetString() ?? string.Empty
-                : string.Empty;
+        return element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
     }
 
     private static int GetInt(JsonElement element, string property)
     {
-        return element.TryGetProperty(property, out var value)
-            && value.TryGetInt32(out var result)
-                ? result
-                : 0;
+        return element.TryGetProperty(property, out var value) && value.TryGetInt32(out var result) ? result : 0;
     }
 
     private static int? GetNullableInt(JsonElement element, string property)
     {
-        return element.TryGetProperty(property, out var value)
-            && value.TryGetInt32(out var result)
-            && result > 0
-                ? result
-                : null;
+        return element.TryGetProperty(property, out var value) && value.TryGetInt32(out var result) && result > 0
+            ? result
+            : null;
     }
 
-    private static string? NullIfBlank(string value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? NullIfBlank(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string NormalizeTitle(string value)
     {
-        return new string(
-            value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray()
-        );
+        return new string(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
     }
 }
