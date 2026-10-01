@@ -80,35 +80,33 @@ public class RefreshPlexAccountAccessEndpoint
             var plexAccountName = await _dbContext.GetPlexAccountDisplayName(plexAccountId, ct);
             var serverAccessRapport = serverAccessResult.Value;
 
-            // If the Plex API returns a 401 Unauthorized error, remove the PlexAccount and PlexServerAccess
-            if (serverAccessRapport.Access.All(x => x.State == PlexAccessState.Revoked))
-            {
-                var lostServerAccess = serverAccessRapport
-                    .Access.Where(x => x.State == PlexAccessState.Revoked)
-                    .Select(x => x.PlexServerId)
-                    .ToList();
+            // Library access rows for a revoked server have to go whether or not the account lost
+            // every other server too. RefreshLibraryAccessCommand only visits the servers that are
+            // still accessible, so it can never clear them, and a stale PlexAccountLibrary row
+            // keeps media the account can no longer reach visible to the indexer.
+            var lostServerAccess = serverAccessRapport
+                .Access.Where(x => x.State == PlexAccessState.Revoked)
+                .Select(x => x.PlexServerId)
+                .ToList();
 
+            var revokedLibraryReports = new List<PlexLibraryAccessRapport>();
+
+            if (lostServerAccess.Count > 0)
+            {
                 var lostLibraryAccess = await _dbContext
                     .PlexAccountLibraries.Include(x => x.PlexLibrary)
                     .Include(x => x.PlexServer)
                     .Where(x => x.PlexAccountId == plexAccountId && lostServerAccess.Contains(x.PlexServerId))
                     .ToListAsync(cancellationToken: ct);
 
-                var libraryAccessRapport = new PlexLibraryAccessRefreshResponse
-                {
-                    Reports = lostLibraryAccess
-                        .Select(x =>
-                            new PlexLibraryAccessRapport(
-                                plexAccountName,
-                                x.PlexServerId,
-                                x.PlexServer!.Name
-                            ).AddRevoked(x.PlexLibraryId, x.PlexLibrary!.Name)
+                revokedLibraryReports.AddRange(
+                    lostLibraryAccess.Select(x =>
+                        new PlexLibraryAccessRapport(plexAccountName, x.PlexServerId, x.PlexServer!.Name).AddRevoked(
+                            x.PlexLibraryId,
+                            x.PlexLibrary!.Name
                         )
-                        .ToList(),
-                    OfflineServers = [],
-                };
-
-                _list.Add(ToDTO(serverAccessRapport, libraryAccessRapport));
+                    )
+                );
 
                 // Remove LibraryAccess for the given PlexAccount
                 var affectedLibraryIds = lostLibraryAccess.Select(x => x.PlexLibraryId).Distinct().ToList();
@@ -118,6 +116,17 @@ public class RefreshPlexAccountAccessEndpoint
                     )
                     .ExecuteDeleteAsync(cancellationToken: ct);
                 _mediaQueryCache.InvalidateLibraries(affectedLibraryIds, "Plex account library access revoked");
+            }
+
+            // If the Plex API returns a 401 Unauthorized error, remove the PlexAccount and PlexServerAccess
+            if (serverAccessRapport.Access.All(x => x.State == PlexAccessState.Revoked))
+            {
+                _list.Add(
+                    ToDTO(
+                        serverAccessRapport,
+                        new PlexLibraryAccessRefreshResponse { Reports = revokedLibraryReports, OfflineServers = [] }
+                    )
+                );
             }
             else
             {
@@ -134,6 +143,9 @@ public class RefreshPlexAccountAccessEndpoint
                 }
 
                 var libraryAccessRapport = libraryAccessResult.Value;
+
+                // Keep the revoked libraries in the rapport so the UI still reports what was lost.
+                libraryAccessRapport.Reports.InsertRange(0, revokedLibraryReports);
 
                 _list.Add(ToDTO(serverAccessRapport, libraryAccessRapport));
             }
