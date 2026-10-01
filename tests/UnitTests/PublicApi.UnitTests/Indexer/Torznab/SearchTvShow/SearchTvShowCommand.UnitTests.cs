@@ -473,6 +473,47 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
     }
 
     [Test]
+    public async Task ShouldReturnEmpty_WhenOnlyServerHasDownloadsPaused()
+    {
+        // Arrange
+        await SetupDatabase(
+            3209,
+            config =>
+            {
+                config.PlexServerCount = 1;
+                config.PlexTvShowLibraryCount = 1;
+                config.TvShowCount = 1;
+                config.TvShowSeasonCount = 1;
+                config.TvShowEpisodeCount = 2;
+            }
+        );
+
+        await IDbContext.PlexServers.ExecuteUpdateAsync(
+            p => p.SetProperty(x => x.IsDownloadsPausedByUser, true),
+            CancellationToken
+        );
+
+        var cmd = new SearchTvShowCommand
+        {
+            Query = string.Empty,
+            Season = 0,
+            Episode = 0,
+            Limit = 10,
+            Offset = 0,
+            IMDB_ID = string.Empty,
+            TMDB_ID = 0,
+            TVDB_ID = 0,
+        };
+
+        // Act
+        var result = await Sut.ExecuteAsync(cmd, CancellationToken);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Value.Channel.Items.ShouldBeEmpty();
+    }
+
+    [Test]
     public void ShouldValidate_WhenPagingOnlyProvided()
     {
         // Arrange

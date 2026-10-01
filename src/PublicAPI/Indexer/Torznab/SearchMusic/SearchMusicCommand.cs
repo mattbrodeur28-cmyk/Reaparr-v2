@@ -93,10 +93,13 @@ public class SearchMusicCommandHandler : ICommandHandler<SearchMusicCommand, Res
         CancellationToken cancellationToken
     )
     {
-        var onlineServerIds = await _dbContext.GetOnlineNonOwnedServerIds(cancellationToken: cancellationToken);
+        var onlineServerIds = await _dbContext.GetDownloadableNonOwnedServerIds(cancellationToken: cancellationToken);
         if (!onlineServerIds.Any())
         {
-            _log.Here().Warning("No online non-owned Plex servers found, returning empty search results.");
+            _log.Here()
+                .Warning(
+                    "No online non-owned Plex servers with downloads enabled found, returning empty search results."
+                );
             return [];
         }
 

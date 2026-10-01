@@ -12,11 +12,12 @@ public static partial class DbContextExtensions
         return plexServerName ?? "Server Name Not Found";
     }
 
-    public static async Task<string> GetPlexServerMachineIdentifierById(this IReaparrDbContext dbContext, int plexServerId)
+    public static async Task<string> GetPlexServerMachineIdentifierById(
+        this IReaparrDbContext dbContext,
+        int plexServerId
+    )
     {
-        var plexServer = await dbContext
-            .PlexServers.IgnoreIsEnabledFilter()
-            .GetAsync(plexServerId);
+        var plexServer = await dbContext.PlexServers.IgnoreIsEnabledFilter().GetAsync(plexServerId);
         return plexServer?.MachineIdentifier ?? string.Empty;
     }
 
@@ -29,18 +30,15 @@ public static partial class DbContextExtensions
         return await dbContext
             .PlexServerStatuses.Where(x => x.PlexServerId == plexServerId && x.IsSuccessful)
             .AnyAsync(cancellationToken);
-    }  
-    
+    }
+
     /// <summary>
     /// Returns whether a <see cref="PlexServer"/> exists and is disabled.
     /// </summary>
-    public static async Task<bool> IsServerDisabled(
-        this IReaparrDbContext dbContext,
-        int plexServerId
-    )
+    public static async Task<bool> IsServerDisabled(this IReaparrDbContext dbContext, int plexServerId)
     {
-        var isEnabled = await dbContext.PlexServers
-            .IgnoreIsEnabledFilter() // Include disabled rows so we can distinguish disabled from non-existent servers.
+        var isEnabled = await dbContext
+            .PlexServers.IgnoreIsEnabledFilter() // Include disabled rows so we can distinguish disabled from non-existent servers.
             .Where(x => x.Id == plexServerId)
             .Select(x => (bool?)x.IsEnabled)
             .FirstOrDefaultAsync();
@@ -94,6 +92,31 @@ public static partial class DbContextExtensions
         return await dbContext
             .PlexServerStatuses.AsNoTracking()
             .Where(x => x.IsSuccessful && nonOwnedServerIds.Contains(x.PlexServerId))
+            .Select(x => x.PlexServerId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The ids of online, non-owned Plex servers that currently allow downloads.
+    /// </summary>
+    /// <remarks>
+    /// Indexer results must not advertise media from paused servers because the download queue
+    /// will refuse to start those tasks after Sonarr, Radarr, or Lidarr grabs them.
+    /// </remarks>
+    public static async Task<List<int>> GetDownloadableNonOwnedServerIds(
+        this IReaparrDbContext dbContext,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var downloadableServerIds = dbContext
+            .PlexServers.WhereIsNotOwned()
+            .Where(x => !x.IsDownloadsPausedByUser)
+            .Select(x => x.Id);
+
+        return await dbContext
+            .PlexServerStatuses.AsNoTracking()
+            .Where(x => x.IsSuccessful && downloadableServerIds.Contains(x.PlexServerId))
             .Select(x => x.PlexServerId)
             .Distinct()
             .ToListAsync(cancellationToken);

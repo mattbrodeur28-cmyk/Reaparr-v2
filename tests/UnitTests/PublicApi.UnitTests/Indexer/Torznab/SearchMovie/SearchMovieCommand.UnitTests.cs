@@ -289,6 +289,42 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
     }
 
     [Test]
+    public async Task ShouldReturnEmpty_WhenOnlyServerHasDownloadsPaused()
+    {
+        // Arrange
+        await SetupDatabase(
+            4507,
+            config =>
+            {
+                config.PlexServerCount = 1;
+                config.PlexMovieLibraryCount = 1;
+                config.MovieCount = 2;
+            }
+        );
+
+        await IDbContext.PlexServers.ExecuteUpdateAsync(
+            p => p.SetProperty(x => x.IsDownloadsPausedByUser, true),
+            CancellationToken
+        );
+
+        var cmd = new SearchMovieCommand
+        {
+            Query = string.Empty,
+            Limit = 10,
+            Offset = 0,
+            IMDB_ID = string.Empty,
+            TMDB_ID = 0,
+        };
+
+        // Act
+        var result = await Sut.ExecuteAsync(cmd, CancellationToken);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Value.Channel.Items.ShouldBeEmpty();
+    }
+
+    [Test]
     public void ShouldValidate_WhenPagingOnlyProvided()
     {
         // Arrange
