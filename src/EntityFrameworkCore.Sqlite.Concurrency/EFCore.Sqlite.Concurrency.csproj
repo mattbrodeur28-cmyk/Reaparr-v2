@@ -113,9 +113,12 @@ NO BREAKING CHANGES — all existing call sites compile and behave correctly wit
         <Compile Remove="src\SqliteDiagnostics.cs" />
         <Compile Remove="src\ExtensionMethods\MemoryPackExtensions.cs" />
     </ItemGroup>
-    <!-- SourceLink for debugging support -->
+    <!-- SourceLink needs no package reference: the .NET SDK has shipped GitHub SourceLink
+         support since .NET 8, and PublishRepositoryUrl/EmbedUntrackedSources above drive it.
+         The Microsoft.SourceLink.GitHub package only pulled in Microsoft.Build.Tasks.Git,
+         whose 10.0.300 release carries GHSA-23fw-v26w-5fgq and failed restore under
+         TreatWarningsAsErrors. -->
     <ItemGroup>
-        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="All" />
         <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     </ItemGroup>
 
