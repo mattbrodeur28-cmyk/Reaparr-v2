@@ -95,11 +95,21 @@ public class SearchMovieCommandHandler : ICommandHandler<SearchMovieCommand, Res
             return [];
         }
 
+        var accessibleLibraryIds = await _dbContext.GetAccessibleLibraryIds(
+            onlineServerIds,
+            PlexMediaType.Movie,
+            cancellationToken
+        );
+        if (accessibleLibraryIds.Count == 0)
+        {
+            _log.Here().Warning("No accessible Plex libraries found, returning empty search results.");
+            return [];
+        }
+
         // Base query with required navigation properties for mapping
         var baseQuery = _dbContext
             .PlexMovies.Include(x => x.MediaDataList)
-            .Where(x => onlineServerIds.Contains(x.PlexServerId))
-            .WhereHasPlexAccountAccess()
+            .Where(x => accessibleLibraryIds.Contains(x.PlexLibraryId))
             .AsQueryable();
 
         // If no specific query or external IDs are provided, return a paged list

@@ -125,14 +125,24 @@ public class SearchTvShowCommandHandler : ICommandHandler<SearchTvShowCommand, R
             return [];
         }
 
+        var accessibleLibraryIds = await _dbContext.GetAccessibleLibraryIds(
+            onlineServerIds,
+            PlexMediaType.TvShow,
+            cancellationToken
+        );
+        if (accessibleLibraryIds.Count == 0)
+        {
+            _log.Here().Warning("No accessible Plex libraries found, returning empty search results.");
+            return [];
+        }
+
         // Base query with required navigation properties for mapping
         var baseQuery = _dbContext
             .PlexTvShowEpisodes.AsNoTracking()
             .Include(x => x.TvShowSeason)
             .Include(x => x.TvShow)
             .Include(e => e.MediaDataList)
-            .Where(x => onlineServerIds.Contains(x.PlexServerId))
-            .WhereHasPlexAccountAccess()
+            .Where(x => accessibleLibraryIds.Contains(x.PlexLibraryId))
             .AsQueryable();
 
         var hasSeason = command.Season > 0;

@@ -103,12 +103,24 @@ public class SearchMusicCommandHandler : ICommandHandler<SearchMusicCommand, Res
             return [];
         }
 
+        var accessibleLibraryIds = await _dbContext.GetAccessibleLibraryIds(
+            // A Plex music section reports its type as "artist", which PlexMediaTypeMappers turns
+            // into PlexMediaType.Artist - a music PlexLibrary is never typed Music.
+            onlineServerIds,
+            PlexMediaType.Artist,
+            cancellationToken
+        );
+        if (accessibleLibraryIds.Count == 0)
+        {
+            _log.Here().Warning("No accessible Plex libraries found, returning empty search results.");
+            return [];
+        }
+
         var baseQuery = _dbContext
             .PlexMusicTracks.Include(x => x.MediaDataList)
             .Include(x => x.Album)
             .Include(x => x.Artist)
-            .Where(x => onlineServerIds.Contains(x.PlexServerId))
-            .WhereHasPlexAccountAccess()
+            .Where(x => accessibleLibraryIds.Contains(x.PlexLibraryId))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(command.Artist))

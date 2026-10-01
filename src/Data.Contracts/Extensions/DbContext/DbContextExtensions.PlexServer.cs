@@ -121,4 +121,32 @@ public static partial class DbContextExtensions
             .Distinct()
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// The ids of libraries on the given servers that remain reachable through a Plex account.
+    /// </summary>
+    /// <remarks>
+    /// A single account must hold both server and library access. Resolving the ids once and then
+    /// filtering media on PlexLibraryId keeps this join off the media query, where it would run as
+    /// a correlated subquery for every candidate row.
+    /// </remarks>
+    public static Task<List<int>> GetAccessibleLibraryIds(
+        this IReaparrDbContext dbContext,
+        IReadOnlyCollection<int> allowedServerIds,
+        PlexMediaType? allowedLibraryType = null,
+        CancellationToken cancellationToken = default
+    ) =>
+        dbContext
+            .PlexLibraries.AsNoTracking()
+            .Where(x =>
+                allowedServerIds.Contains(x.PlexServerId)
+                && x.PlexAccountLibraries.Any(libraryAccess =>
+                    x.PlexServer!.PlexAccountServers.Any(serverAccess =>
+                        serverAccess.PlexAccountId == libraryAccess.PlexAccountId
+                    )
+                )
+            )
+            .ApplyWhere(allowedLibraryType != null, x => x.Type == allowedLibraryType)
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
 }

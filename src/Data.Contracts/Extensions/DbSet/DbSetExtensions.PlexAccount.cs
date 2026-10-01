@@ -7,37 +7,4 @@ public static partial class DbSetExtensions
 
     public static IQueryable<PlexAccount> IncludeLibraryAccess(this IQueryable<PlexAccount> plexAccount) =>
         plexAccount.Include(x => x.PlexAccountLibraries).ThenInclude(x => x.PlexLibrary);
-
-    /// <summary>
-    /// Filters Plex media down to libraries that remain accessible through a configured Plex account.
-    /// </summary>
-    /// <remarks>
-    /// A single account must retain access to both the server and the library. Media without account
-    /// access cannot be downloaded and must not be advertised to integrations.
-    /// </remarks>
-    public static IQueryable<T> WhereHasPlexAccountAccess<T>(this IQueryable<T> query)
-        where T : BasePlexMedia =>
-        query.Where(x =>
-            x.PlexLibrary!.PlexAccountLibraries.Any(libraryAccess =>
-                x.PlexServer!.PlexAccountServers.Any(serverAccess =>
-                    serverAccess.PlexAccountId == libraryAccess.PlexAccountId
-                )
-            )
-        );
-
-    /// <summary>
-    /// Episode-specific overload that resolves access through the parent show.
-    /// </summary>
-    /// <remarks>
-    /// An episode's own PlexLibraryId can go stale when a show is re-parented during a sync, so the
-    /// show is the reliable anchor for the access check.
-    /// </remarks>
-    public static IQueryable<PlexTvShowEpisode> WhereHasPlexAccountAccess(this IQueryable<PlexTvShowEpisode> query) =>
-        query.Where(x =>
-            x.TvShow!.PlexLibrary!.PlexAccountLibraries.Any(libraryAccess =>
-                x.TvShow.PlexServer!.PlexAccountServers.Any(serverAccess =>
-                    serverAccess.PlexAccountId == libraryAccess.PlexAccountId
-                )
-            )
-        );
 }
