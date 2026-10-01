@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Flurl;
 
 namespace Reaparr.Settings.Contracts;
@@ -54,8 +55,10 @@ public record NetworkSettingsModule
         set => SetProperty(ref field, value);
     } = string.Empty;
 
+    [JsonIgnore]
     public Uri Uri => new(Url);
 
+    [JsonIgnore]
     public string Url
     {
         get
