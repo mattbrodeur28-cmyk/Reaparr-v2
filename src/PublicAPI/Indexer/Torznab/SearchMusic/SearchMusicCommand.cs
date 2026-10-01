@@ -108,6 +108,7 @@ public class SearchMusicCommandHandler : ICommandHandler<SearchMusicCommand, Res
             .Include(x => x.Album)
             .Include(x => x.Artist)
             .Where(x => onlineServerIds.Contains(x.PlexServerId))
+            .WhereHasPlexAccountAccess()
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(command.Artist))

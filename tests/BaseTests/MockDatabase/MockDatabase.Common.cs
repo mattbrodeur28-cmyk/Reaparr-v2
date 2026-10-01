@@ -147,7 +147,7 @@ public static partial class MockDatabase
                 PlexServerId = x.Id,
                 PlexAccountId = plexAccount.Id,
                 AuthToken = "FAKE_AUTH_TOKEN",
-                IsServerOwned = true,
+                IsServerOwned = config.PlexAccountOwnsServers,
             });
 
             // Add account -> server relation
@@ -162,7 +162,7 @@ public static partial class MockDatabase
                     PlexAccountId = plexAccount.Id,
                     PlexServerId = x.PlexServerId,
                     PlexLibraryId = x.Id,
-                    IsLibraryOwned = true,
+                    IsLibraryOwned = config.PlexAccountOwnsServers,
                 });
             context.PlexAccountLibraries.AddRange(plexAccountLibraries);
         }

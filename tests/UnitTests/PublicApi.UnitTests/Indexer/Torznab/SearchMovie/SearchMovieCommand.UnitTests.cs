@@ -18,6 +18,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 5;
                 config.IncludeMultiPartMovies = false;
@@ -105,6 +107,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 2;
             }
@@ -152,6 +156,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 2;
             }
@@ -193,6 +199,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 0;
             }
@@ -224,6 +232,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 3;
                 config.IncludeMultiPartMovies = true;
@@ -266,6 +276,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 2;
             }
@@ -297,6 +309,8 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexMovieLibraryCount = 1;
                 config.MovieCount = 2;
             }
@@ -432,5 +446,111 @@ public class SearchMovieCommandUnitTests : BaseUnitTest<SearchMovieCommandHandle
         // Assert
         result.IsValid.ShouldBeFalse();
         result.Errors.ShouldNotBeEmpty();
+    }
+
+    [Test]
+    public async Task ShouldNotReturnMovies_WhenPlexServerAccessWasRevoked()
+    {
+        // Arrange
+        await SetupDatabase(
+            4610,
+            config =>
+            {
+                config.PlexServerCount = 2;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
+                config.PlexMovieLibraryCount = 1;
+                config.MovieCount = 2;
+                config.IncludeMultiPartMovies = false;
+            }
+        );
+
+        var revokedServerId = await IDbContext
+            .PlexServers.OrderBy(x => x.Id)
+            .Select(x => x.Id)
+            .LastAsync(CancellationToken);
+
+        await IDbContext
+            .PlexAccountServers.Where(x => x.PlexServerId == revokedServerId)
+            .ExecuteDeleteAsync(CancellationToken);
+
+        var expectedTitles = await GetExpectedTitlesExcludingServerAsync(revokedServerId);
+        expectedTitles.ShouldNotBeEmpty();
+
+        var cmd = new SearchMovieCommand
+        {
+            Query = string.Empty,
+            Limit = 100,
+            Offset = 0,
+            IMDB_ID = string.Empty,
+            TMDB_ID = 0,
+        };
+
+        // Act
+        var result = await Sut.ExecuteAsync(cmd, CancellationToken);
+
+        // Assert
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Channel.Items.Select(x => x.Title).ToList().ShouldBe(expectedTitles);
+    }
+
+    [Test]
+    public async Task ShouldNotReturnMovies_WhenPlexLibraryAccessWasRevoked()
+    {
+        // Arrange
+        await SetupDatabase(
+            4611,
+            config =>
+            {
+                config.PlexServerCount = 2;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
+                config.PlexMovieLibraryCount = 1;
+                config.MovieCount = 2;
+                config.IncludeMultiPartMovies = false;
+            }
+        );
+
+        var revokedServerId = await IDbContext
+            .PlexServers.OrderBy(x => x.Id)
+            .Select(x => x.Id)
+            .LastAsync(CancellationToken);
+
+        await IDbContext
+            .PlexAccountLibraries.Where(x => x.PlexServerId == revokedServerId)
+            .ExecuteDeleteAsync(CancellationToken);
+
+        var expectedTitles = await GetExpectedTitlesExcludingServerAsync(revokedServerId);
+        expectedTitles.ShouldNotBeEmpty();
+
+        var cmd = new SearchMovieCommand
+        {
+            Query = string.Empty,
+            Limit = 100,
+            Offset = 0,
+            IMDB_ID = string.Empty,
+            TMDB_ID = 0,
+        };
+
+        // Act
+        var result = await Sut.ExecuteAsync(cmd, CancellationToken);
+
+        // Assert
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Channel.Items.Select(x => x.Title).ToList().ShouldBe(expectedTitles);
+    }
+
+    private async Task<List<string>> GetExpectedTitlesExcludingServerAsync(int excludedPlexServerId)
+    {
+        var movies = await IDbContext
+            .PlexMovies.AsNoTracking()
+            .Include(x => x.MediaDataList)
+            .Where(x => x.PlexServerId != excludedPlexServerId)
+            .OrderBy(x => x.Id)
+            .ToListAsync(CancellationToken);
+
+        return movies
+            .SelectMany(x => x.MediaDataList.OrderBy(y => y.PlexApiPartId).Select(y => y.GetFileName))
+            .ToList();
     }
 }

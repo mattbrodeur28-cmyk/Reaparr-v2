@@ -14,6 +14,13 @@ public class FakeDataConfig : BaseConfig<FakeDataConfig>
     /// </summary>
     public int PlexAccountCount { get; set; } = 0;
 
+    /// <summary>
+    /// Whether the seeded PlexAccount owns the PlexServers and PlexLibraries it has access to.
+    /// Set to false to model a shared (non-owned) server the account still has access to, which is
+    /// what the Torznab indexer advertises.
+    /// </summary>
+    public bool PlexAccountOwnsServers { get; set; } = true;
+
     public int MovieCount { get; set; } = 0;
 
     public int TvShowCount { get; set; } = 0;

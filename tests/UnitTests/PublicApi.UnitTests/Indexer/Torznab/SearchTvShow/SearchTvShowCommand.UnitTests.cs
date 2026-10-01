@@ -18,6 +18,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
@@ -107,6 +109,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
@@ -181,6 +185,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
@@ -240,6 +246,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 10;
                 config.TvShowSeasonCount = 3;
@@ -299,6 +307,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 0;
                 config.TvShowSeasonCount = 0;
@@ -335,6 +345,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
@@ -383,6 +395,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
@@ -418,6 +432,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 3;
@@ -481,6 +497,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
@@ -822,6 +840,8 @@ public class SearchTvShowCommandUnitTests : BaseUnitTest<SearchTvShowCommandHand
             config =>
             {
                 config.PlexServerCount = 1;
+                config.PlexAccountCount = 1;
+                config.PlexAccountOwnsServers = false;
                 config.PlexTvShowLibraryCount = 1;
                 config.TvShowCount = 1;
                 config.TvShowSeasonCount = 1;
