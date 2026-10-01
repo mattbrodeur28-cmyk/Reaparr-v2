@@ -51,8 +51,10 @@ public class GetTvShowMediaComparisonDetailsCommandHandler
         if (currentOwnedLibraryIds.Count == 0)
             return [];
 
-        // An episode's TvShowId can go stale when a show is re-parented during a sync, which drops
-        // real episodes out of the comparison. The season rows stay correct, so anchor on those.
+        // Anchor on the season rows rather than Episode.TvShowId. SyncPlexTvShowsCommand deletes and
+        // reinserts the whole library, so today both columns agree - but the season is the structural
+        // link, and reading it keeps this query correct if an incremental sync path is ever added,
+        // where a re-parented show would leave Episode.TvShowId stale.
         var seasonIds = _dbContext.PlexTvShowSeason
             .Where(x => x.PlexLibraryId == tvShow.PlexLibraryId && x.TvShowId == tvShow.Id)
             .Select(x => x.Id);
