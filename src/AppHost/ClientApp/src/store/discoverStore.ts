@@ -152,7 +152,7 @@ interface IGroupBucket {
 	fallbackKey: string;
 }
 
-const DISCOVER_CACHE_KEY = 'discover-feed-v8354a';
+const DISCOVER_CACHE_KEY = 'discover-feed-v8355';
 const DISCOVER_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const QUALITY_RANK: Record<VideoQuality, number> = {
@@ -180,6 +180,28 @@ const STATE_RANK: Record<PlexMediaComparisonState, number> = {
 	[PlexMediaComparisonState.HigherQuality]: 3,
 	[PlexMediaComparisonState.PartialAndHigherQuality]: 4,
 };
+
+// V8.3.5.5 TITLE MATCH STOP WORDS
+//
+// PlexMediaSlimDTO.SearchTitle is built by StringExtensions.ToSearchTitle in
+// src/Domain/_Shared/Extensions/StringExtensions.cs, which drops these stop words
+// before the title is persisted. Radarr and Sonarr return raw titles, so both
+// sides of a fallback title match have to go through the same reduction. Keep
+// this list in sync with the C# _stopWords set.
+const TITLE_STOP_WORDS = new Set([
+	'a',
+	'an',
+	'and',
+	'the',
+	'of',
+	'in',
+	'on',
+	'for',
+	'with',
+	'to',
+	'by',
+	'at',
+]);
 
 const IDENTITY_BASIS_RANK: Record<DiscoverIdentityBasis, number> = {
 	tmdb: 5,
@@ -1008,11 +1030,20 @@ export const useDiscoverStore = defineStore('discoverStore', () => {
 	}
 
 	function normalizeTitle(value: string): string {
-		return value
+		const words = value
 			.normalize('NFKD')
 			.toLocaleLowerCase()
 			.replace(/[\u0300-\u036f]/g, '')
-			.replace(/[^a-z0-9]/g, '');
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim()
+			.split(' ')
+			.filter(Boolean);
+
+		const significant = words.filter((word) => !TITLE_STOP_WORDS.has(word));
+
+		// A title made only of stop words would reduce to an empty key and then
+		// match every other empty key, so keep every word in that case.
+		return (significant.length > 0 ? significant : words).join('');
 	}
 
 	function sortDiscoverItems(a: IDiscoverItem, b: IDiscoverItem): number {
