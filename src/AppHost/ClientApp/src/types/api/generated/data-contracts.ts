@@ -2164,6 +2164,8 @@ export interface ValidatePlexTokenEndpointRequest {
   displayName: string;
   /** @minLength 5 */
   manualAuthenticationToken: string;
+  /** @format int32 */
+  plexAccountId: number;
 }
 
 export interface ValidatePlexTokenEndpointResponse {
