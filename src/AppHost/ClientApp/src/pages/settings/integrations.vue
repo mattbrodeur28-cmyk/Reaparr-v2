@@ -30,7 +30,17 @@
 				</div>
 			</q-expansion-item>
 
-			<SonarrIntegration />
+			<q-expansion-item
+				v-model="sonarrExpanded"
+				class="v77-integration-expansion"
+				header-class="v77-integration-expansion__header"
+				icon="mdi-television-classic"
+				:label="$t('components.sonarr-integration.title')"
+				caption="TV wanted/missing integration">
+				<div class="v77-integration-expansion__content">
+					<SonarrIntegration />
+				</div>
+			</q-expansion-item>
 
 			<q-expansion-item
 				v-model="radarrExpanded"
@@ -68,8 +78,17 @@
 				</div>
 			</q-expansion-item>
 
-			<LibraryReconciliationIntegration />
-			<MediaAutomationIntegration />
+			<q-expansion-item
+				v-model="libraryReconciliationExpanded"
+				class="v77-integration-expansion"
+				header-class="v77-integration-expansion__header"
+				icon="mdi-sync"
+				label="Library Reconciliation"
+				caption="Post-download Plex library reconciliation">
+				<div class="v77-integration-expansion__content">
+					<LibraryReconciliationIntegration />
+				</div>
+			</q-expansion-item>
 		</section>
 	</QPage>
 </template>
@@ -79,6 +98,16 @@ import { useLocalStorage } from '@vueuse/core';
 
 const radarrExpanded = useLocalStorage<boolean>(
 	'reaparr-settings-radarr-expanded',
+	false,
+);
+
+const sonarrExpanded = useLocalStorage<boolean>(
+	'reaparr-settings-sonarr-expanded',
+	false,
+);
+
+const libraryReconciliationExpanded = useLocalStorage<boolean>(
+	'reaparr-settings-library-reconciliation-expanded',
 	false,
 );
 
@@ -97,27 +126,3 @@ const publicApiExpanded = useLocalStorage<boolean>(
 	false,
 );
 </script>
-
-<style lang="scss">
-.v77-integration-expansion {
-  overflow: hidden;
-  border: 1px solid var(--v5-border);
-  border-radius: 20px;
-  background: var(--v5-surface);
-  box-shadow: var(--v5-shadow-sm);
-}
-
-.v77-integration-expansion__header {
-  min-height: 62px;
-  padding: 10px 16px;
-}
-
-.v77-integration-expansion__content {
-  padding: 0 10px 10px;
-}
-
-.v77-integration-expansion__content > * {
-  border: 0 !important;
-  box-shadow: none !important;
-}
-</style>

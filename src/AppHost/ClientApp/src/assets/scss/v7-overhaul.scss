@@ -204,15 +204,18 @@
 /* MediaOverview modernization without touching its business logic */
 [data-reaparr-theme="modern"] .v7-media-overview-shell {
   overflow: hidden;
+
+  /* The minimum belongs to the shell, not to each child. MediaOverview renders two
+     children - the toolbar wrapper and the content - and the wrapper is a fixed
+     $media-overview-bar-height (89px). Forcing 200px onto it left ~111px of dead
+     space between the library header row and the posters on every library view.
+     Discover does not use this shell, which is why it was the only page unaffected. */
+  min-height: 200px;
   border: 1px solid var(--v5-border);
   border-radius: 25px;
   background: var(--v5-surface);
   box-shadow: var(--v5-shadow-md);
   backdrop-filter: blur(18px);
-}
-
-[data-reaparr-theme="modern"] .v7-media-overview-shell > * {
-  min-height: 200px;
 }
 
 .v7-media-overview-shell .q-toolbar,
@@ -401,4 +404,30 @@
   [data-reaparr-theme="modern"] .v7-media-overview-shell .q-card {
     transition: none;
   }
+}
+
+/* Collapsible settings sections, shared by the Integrations and Advanced pages.
+   These live here rather than in a page's own style block because an unscoped
+   SFC style is only injected once that page's chunk has loaded, which left the
+   Advanced page unstyled when opened directly. */
+.v77-integration-expansion {
+  overflow: hidden;
+  border: 1px solid var(--v5-border);
+  border-radius: 20px;
+  background: var(--v5-surface);
+  box-shadow: var(--v5-shadow-sm);
+}
+
+.v77-integration-expansion__header {
+  min-height: 62px;
+  padding: 10px 16px;
+}
+
+.v77-integration-expansion__content {
+  padding: 0 10px 10px;
+}
+
+.v77-integration-expansion__content > * {
+  border: 0 !important;
+  box-shadow: none !important;
 }

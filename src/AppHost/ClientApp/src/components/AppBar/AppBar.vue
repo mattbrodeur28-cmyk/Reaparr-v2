@@ -112,7 +112,11 @@ function openUpdateDialog(): void {
 .v5-app-bar {
   box-sizing: border-box;
   width: 100%;
-  padding: 10px 14px 0;
+
+  /* Matches the navigation drawer's 10px gutter so the floating app bar and the
+     drawer shell below it share a left edge. They were 14px and 10px, which left
+     the two cards misaligned by 4px. */
+  padding: 10px 10px 0;
   background: transparent !important;
   box-shadow: none !important;
   pointer-events: none;
