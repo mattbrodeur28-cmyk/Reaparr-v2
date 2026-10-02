@@ -72,6 +72,21 @@ export interface CheckAllConnectionStatusUpdateDTO {
   plexServersWithConnectionIds: Record<string, number[]>;
 }
 
+export interface ConfigureLidarrIntegrationRequest {
+  apiKey: string;
+  url: string;
+}
+
+export interface TestConnectionToLidarrEndpointResponse {
+  result: TestConnectionStatus;
+}
+
+export interface LidarrSettingsDTO {
+  isConfigured: boolean;
+  lidarrApiKey: string;
+  lidarrBaseUrl: string;
+}
+
 export interface ConfigureRadarrIntegrationRequest {
   /** @minLength 1 */
   apiKey: string;
@@ -709,6 +724,7 @@ export interface InspectPlexServerJobUpdateDTO {
 export interface IntegrationsSettingsDTO {
   downloadClientPassword: string;
   downloadClientUsername: string;
+  lidarr: LidarrSettingsDTO;
   radarr: RadarrSettingsDTO;
   reaparrApiKey: string;
   sonarr: SonarrSettingsDTO;

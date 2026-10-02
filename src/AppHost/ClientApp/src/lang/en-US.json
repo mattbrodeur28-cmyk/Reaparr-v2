@@ -437,6 +437,30 @@
 			},
 			"title": "Sonarr Integration"
 		},
+		"lidarr-integration": {
+			"callback-url-warning": "Reaparr will register with Lidarr using localhost as its callback URL. If running in Docker, configure the public Reaparr URL in Network settings.",
+			"callback-url-configured": "Reaparr will register with Lidarr using {url} as its callback URL.",
+			"connection-status": {
+				"connection-failed": "Could not connect to Lidarr. Ensure Lidarr is online and connectable!",
+				"invalid-api-key": "Could connect to Lidarr, but the API key was invalid",
+				"success": "Reaparr can connect successfully to Lidarr!",
+				"unknown-connection-status": "Could not determine what went wrong when testing the connection with Lidarr",
+				"url-is-invalid": "The Lidarr base URL is invalid, check again."
+			},
+			"configuration-status": {
+				"success": "Lidarr has been successfully configured to work with Reaparr"
+			},
+			"nav-bar": {
+				"configure": {
+					"button": "Setup Lidarr Integration",
+					"title": "Configure Lidarr Integration"
+				},
+				"connection": {
+					"title": "Setup Lidarr Connection"
+				}
+			},
+			"title": "Lidarr"
+		},
 		"radarr-integration": {
 			"callback-url-warning": "Reaparr will register with Radarr using localhost as its callback URL. If running in Docker, configure the public Reaparr URL in Network settings.",
 			"callback-url-configured": "Reaparr will register with Radarr using {url} as its callback URL.",
@@ -912,6 +936,30 @@
 					"test-connection": {
 						"text": "Reaparr will attempt to connect to the Sonarr instance with the provided base URL and API key.",
 						"title": "Test the connection to Sonarr"
+					}
+				},
+				"lidarr": {
+					"api-key-input": {
+						"label": "Lidarr API Key",
+						"text": "Go to Lidarr: Settings → General → Security → API Key and copy the API key from there and paste in this field",
+						"title": "API key from Lidarr"
+					},
+					"base-url-input": {
+						"label": "Lidarr base URL",
+						"text": "Base address where your Lidarr instance is reachable. Example: http://localhost:8686 or http://lidarr:8686",
+						"title": "Base URL to Lidarr"
+					},
+					"clear-configuration": {
+						"text": "Clears the Lidarr configuration from Reaparr and resets the base URL and API key inputs.",
+						"title": "Clear Lidarr configuration"
+					},
+					"setup-configuration": {
+						"text": "Reaparr will set up an Indexer and Download client in Lidarr, which is then used to allow Lidarr to trigger music downloads.\n\nLidarr owns the music monitoring: it tracks which albums are missing or below their quality cutoff and searches Reaparr for them.",
+						"title": "Setup Lidarr configuration"
+					},
+					"test-connection": {
+						"text": "Reaparr will attempt to connect to the Lidarr instance with the provided base URL and API key.",
+						"title": "Test the connection to Lidarr"
 					}
 				},
 				"radarr": {

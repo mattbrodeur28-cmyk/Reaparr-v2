@@ -24,6 +24,7 @@ public static class SettingsModelToDTOMapper
         {
             Sonarr = dto.Sonarr.ToModel(),
             Radarr = dto.Radarr.ToModel(),
+            Lidarr = dto.Lidarr.ToModel(),
             ReaparrApiKey = dto.ReaparrApiKey,
             DownloadClientUsername = dto.DownloadClientUsername,
             DownloadClientPassword = dto.DownloadClientPassword,
@@ -35,6 +36,14 @@ public static class SettingsModelToDTOMapper
             IsConfigured = dto.IsConfigured,
             SonarrBaseUrl = dto.SonarrBaseUrl,
             SonarrApiKey = dto.SonarrApiKey,
+        };
+
+    public static LidarrSettings ToModel(this LidarrSettingsDTO dto) =>
+        new()
+        {
+            IsConfigured = dto.IsConfigured,
+            LidarrBaseUrl = dto.LidarrBaseUrl,
+            LidarrApiKey = dto.LidarrApiKey,
         };
 
     public static RadarrSettings ToModel(this RadarrSettingsDTO dto) =>
@@ -140,6 +149,7 @@ public static class SettingsModelToDTOMapper
             ReaparrApiKey = module.ReaparrApiKey,
             Sonarr = module.Sonarr.ToDTO(),
             Radarr = module.Radarr.ToDTO(),
+            Lidarr = module.Lidarr.ToDTO(),
             DownloadClientUsername = module.DownloadClientUsername,
             DownloadClientPassword = module.DownloadClientPassword,
         };
@@ -149,6 +159,14 @@ public static class SettingsModelToDTOMapper
         {
             SonarrBaseUrl = module.SonarrBaseUrl,
             SonarrApiKey = module.SonarrApiKey,
+            IsConfigured = module.IsConfigured,
+        };
+
+    public static LidarrSettingsDTO ToDTO(this LidarrSettings module) =>
+        new()
+        {
+            LidarrBaseUrl = module.LidarrBaseUrl,
+            LidarrApiKey = module.LidarrApiKey,
             IsConfigured = module.IsConfigured,
         };
 

@@ -11,6 +11,7 @@ import { StoreNames, type ISetupResult } from '@interfaces';
 interface IIntegrationStoreState {
 	sonarr: IIntegrationState;
 	radarr: IIntegrationState;
+	lidarr: IIntegrationState;
 }
 
 interface IIntegrationState {
@@ -35,6 +36,15 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 			error: null,
 		},
 		radarr: {
+			step: 1,
+			isTesting: false,
+			isConfiguring: false,
+			testSuccess: null,
+			testStatus: null,
+			configuringSuccess: null,
+			error: null,
+		},
+		lidarr: {
 			step: 1,
 			isTesting: false,
 			isConfiguring: false,
@@ -71,6 +81,7 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 		setup(): Observable<ISetupResult> {
 			const sonarrSettings = settingsStore.integrationsSettings.sonarr;
 			const radarrSettings = settingsStore.integrationsSettings.radarr;
+			const lidarrSettings = settingsStore.integrationsSettings.lidarr;
 
 			const testObservables: Observable<{ integration: string; isSuccess: boolean }>[] = [];
 
@@ -128,6 +139,35 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 							isSuccess: response.isSuccess && response.value?.result === TestConnectionStatus.Success,
 						})),
 						catchError(() => of({ integration: 'Radarr', isSuccess: false })),
+					),
+				);
+			}
+
+			// Test Lidarr if configured
+			if (lidarrSettings.isConfigured && lidarrSettings.lidarrBaseUrl && lidarrSettings.lidarrApiKey) {
+				testObservables.push(
+					integrationApi.testConnectionToLidarrEndpoint({
+						url: lidarrSettings.lidarrBaseUrl,
+						apiKey: lidarrSettings.lidarrApiKey,
+					}).pipe(
+						tap((response) => {
+							if (!response.isSuccess || response.value?.result !== TestConnectionStatus.Success) {
+								showErrorNotification('Failed to connect to Lidarr. Please check your integration settings.', 5000);
+								state.lidarr.testSuccess = false;
+								state.lidarr.testStatus = response.value?.result ?? TestConnectionStatus.Unknown;
+								state.lidarr.step = 1;
+							} else {
+								// If Lidarr connection is successful, set step to 3 to show as completed
+								state.lidarr.step = 3;
+								state.lidarr.testSuccess = true;
+								state.lidarr.configuringSuccess = settingsStore.integrationsSettings.lidarr.isConfigured;
+							}
+						}),
+						switchMap((response) => of({
+							integration: 'Lidarr',
+							isSuccess: response.isSuccess && response.value?.result === TestConnectionStatus.Success,
+						})),
+						catchError(() => of({ integration: 'Lidarr', isSuccess: false })),
 					),
 				);
 			}
@@ -206,6 +246,36 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 			}));
 		},
 
+		testConnectionToLidarr() {
+			state.lidarr.isTesting = true;
+			state.lidarr.testSuccess = null;
+			state.lidarr.testStatus = null;
+			state.lidarr.error = null;
+
+			return integrationApi.testConnectionToLidarrEndpoint({
+				url: settingsStore.integrationsSettings.lidarr.lidarrBaseUrl,
+				apiKey: settingsStore.integrationsSettings.lidarr.lidarrApiKey,
+			}).pipe(tap((response) => {
+				if (response.isSuccess) {
+					const status = response.value?.result ?? TestConnectionStatus.Unknown;
+					state.lidarr.testStatus = status;
+
+					if (status === TestConnectionStatus.Success) {
+						state.lidarr.testSuccess = true;
+						state.lidarr.step = 2;
+					} else {
+						state.lidarr.testSuccess = false;
+					}
+				} else {
+					state.lidarr.testSuccess = false;
+					state.lidarr.testStatus = null;
+					state.lidarr.error = response;
+				}
+			}), finalize(() => {
+				state.lidarr.isTesting = false;
+			}));
+		},
+
 		configureSonarrIntegration() {
 			state.sonarr.isConfiguring = true;
 			state.sonarr.configuringSuccess = null;
@@ -256,6 +326,31 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 			);
 		},
 
+		configureLidarrIntegration() {
+			state.lidarr.isConfiguring = true;
+			state.lidarr.configuringSuccess = null;
+			state.lidarr.error = null;
+
+			return integrationApi.configureLidarrIntegrationEndpoint({
+				url: settingsStore.integrationsSettings.lidarr.lidarrBaseUrl,
+				apiKey: settingsStore.integrationsSettings.lidarr.lidarrApiKey,
+			}).pipe(
+				tap((response) => {
+					state.lidarr.configuringSuccess = response.isSuccess;
+					if (response.isSuccess) {
+						// This should overshoot to step 3 to show step 2 as done
+						state.lidarr.step = 3;
+					} else {
+						state.lidarr.error = response;
+					}
+				}),
+				switchMap((response) => response.isSuccess ? settingsStore.refreshSettings() : of(response)),
+				finalize(() => {
+					state.lidarr.isConfiguring = false;
+				}),
+			);
+		},
+
 		clearRadarrConfiguration() {
 			return integrationApi.clearRadarrConfigurationEndpoint().pipe(
 				switchMap((response) => response.isSuccess ? settingsStore.refreshSettings() : of(response)),
@@ -264,6 +359,12 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 
 		clearSonarrConfiguration() {
 			return integrationApi.clearSonarrConfigurationEndpoint().pipe(
+				switchMap((response) => response.isSuccess ? settingsStore.refreshSettings() : of(response)),
+			);
+		},
+
+		clearLidarrConfiguration() {
+			return integrationApi.clearLidarrConfigurationEndpoint().pipe(
 				switchMap((response) => response.isSuccess ? settingsStore.refreshSettings() : of(response)),
 			);
 		},
@@ -282,6 +383,10 @@ export const useIntegrationStore = defineStore(StoreNames.IntegrationStore, () =
 		isSonarrConnectionValid: computed(() => {
 			const { sonarrBaseUrl, sonarrApiKey } = settingsStore.integrationsSettings.sonarr;
 			return isValidUrl(sonarrBaseUrl) && isValidApiKey(sonarrApiKey);
+		}),
+		isLidarrConnectionValid: computed(() => {
+			const { lidarrBaseUrl, lidarrApiKey } = settingsStore.integrationsSettings.lidarr;
+			return isValidUrl(lidarrBaseUrl) && isValidApiKey(lidarrApiKey);
 		}),
 	};
 

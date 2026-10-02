@@ -5,16 +5,19 @@ namespace Reaparr.Application.UnitTests;
 
 public class NotifyArrAppsOnStartupCommandHandlerUnitTests : BaseUnitTest<NotifyArrAppsOnStartupCommandHandler>
 {
-    // IRadarrSettings and ISonarrSettings inherit IBaseSettingsModule<T> which has a static abstract
-    // member, making them incompatible with Moq. Inject concrete instances via TypedParameter instead.
+    // IRadarrSettings, ISonarrSettings and ILidarrSettings inherit IBaseSettingsModule<T> which has a
+    // static abstract member, making them incompatible with Moq. Inject concrete instances via
+    // TypedParameter instead.
 
     private NotifyArrAppsOnStartupCommandHandler CreateSut(
         RadarrSettings radarrSettings,
-        SonarrSettings sonarrSettings
+        SonarrSettings sonarrSettings,
+        LidarrSettings? lidarrSettings = null
     ) =>
         Mock.Create<NotifyArrAppsOnStartupCommandHandler>(
             new TypedParameter(typeof(IRadarrSettings), radarrSettings),
-            new TypedParameter(typeof(ISonarrSettings), sonarrSettings)
+            new TypedParameter(typeof(ISonarrSettings), sonarrSettings),
+            new TypedParameter(typeof(ILidarrSettings), lidarrSettings ?? NotConfiguredLidarrSettings())
         );
 
     private static RadarrSettings ValidRadarrSettings(
@@ -53,6 +56,25 @@ public class NotifyArrAppsOnStartupCommandHandlerUnitTests : BaseUnitTest<Notify
             IsConfigured = false,
             SonarrBaseUrl = string.Empty,
             SonarrApiKey = string.Empty,
+        };
+
+    private static LidarrSettings ValidLidarrSettings(
+        string baseUrl = "http://localhost:8686",
+        string apiKey = "some-lidarr-key"
+    ) =>
+        new()
+        {
+            IsConfigured = true,
+            LidarrBaseUrl = baseUrl,
+            LidarrApiKey = apiKey,
+        };
+
+    private static LidarrSettings NotConfiguredLidarrSettings() =>
+        new()
+        {
+            IsConfigured = false,
+            LidarrBaseUrl = string.Empty,
+            LidarrApiKey = string.Empty,
         };
 
     private static NotifyArrAppsOnStartupCommand InstantCommand => new();

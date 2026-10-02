@@ -9,6 +9,7 @@ public static class HttpClientModule
     public static readonly string DefaultClientName = string.Empty;
     internal static readonly string SonarrClientName = "Sonarr";
     internal static readonly string RadarrClientName = "Radarr";
+    internal static readonly string LidarrClientName = "Lidarr";
     public static readonly string PlexThumbnailClientName = "PlexThumbnail";
     internal static readonly string GitHubClientName = "GitHub";
 
@@ -86,6 +87,35 @@ public static class HttpClientModule
 
     public static HttpClient CreateRadarrHttpClient(this IHttpClientFactory factory) =>
         factory.CreateClient(RadarrClientName);
+
+    public static void RegisterLidarrHttpClient(this IServiceCollection services)
+    {
+        services
+            .AddHttpClient(
+                LidarrClientName,
+                (sp, client) =>
+                {
+                    var settings = (ILidarrSettings?)sp.GetService(typeof(ILidarrSettings));
+                    if (settings == null || string.IsNullOrWhiteSpace(settings.LidarrBaseUrl))
+                        return;
+
+                    var normalizedBaseUrl = settings.LidarrBaseUrl.Trim().TrimEnd('/') + "/";
+                    if (!Uri.TryCreate(normalizedBaseUrl, UriKind.Absolute, out var baseUri))
+                        return;
+
+                    client.BaseAddress = baseUri;
+                    client.Timeout = TimeSpan.FromSeconds(15);
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                    if (!string.IsNullOrWhiteSpace(settings.LidarrApiKey))
+                        client.DefaultRequestHeaders.Add("X-Api-Key", settings.LidarrApiKey);
+                }
+            )
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    }
+
+    public static HttpClient CreateLidarrHttpClient(this IHttpClientFactory factory) =>
+        factory.CreateClient(LidarrClientName);
 
     public static void RegisterPlexThumbnailHttpClient(this IServiceCollection services)
     {

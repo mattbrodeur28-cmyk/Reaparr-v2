@@ -15,6 +15,7 @@ import { ContentType } from "./http-client";
 
 import type {
   BaseResultDTO,
+  ConfigureLidarrIntegrationRequest,
   ConfigureRadarrIntegrationRequest,
   ConfigureSonarrIntegrationRequest,
   DiscoverPerformanceStatsDTO,
@@ -30,6 +31,7 @@ import type {
   LibraryReconciliationStatusDTO,
   MoveConcurrencyStatusDTO,
   PlexLibraryRefreshRequest,
+  TestConnectionToLidarrEndpointResponse,
   TestConnectionToRadarrEndpointResponse,
   TestConnectionToSonarrEndpointResponse,
   TmdbIntegrationSettingsRequest,
@@ -280,6 +282,66 @@ export class Integration {
   /**
    * No description
    * * @tags Integration
+   * @name ClearLidarrConfigurationEndpoint
+   * @request DELETE:/api/Integration/Lidarr/Configuration
+   * @secure
+   */
+  clearLidarrConfigurationEndpoint = (params: RequestParams = {}) =>
+    axiosObservable<BaseResultDTO>({
+      url: `/api/Integration/Lidarr/Configuration`,
+      method: "DELETE",
+      secure: true,
+      responseType: "json",
+      ...params,
+    }).pipe(apiCheckPipe<BaseResultDTO>);
+
+  /**
+   * No description
+   * * @tags Integration
+   * @name ConfigureLidarrIntegrationEndpoint
+   * @request POST:/api/Integration/Lidarr/Configure
+   * @secure
+   */
+  configureLidarrIntegrationEndpoint = (
+    data: ConfigureLidarrIntegrationRequest,
+    params: RequestParams = {},
+  ) =>
+    axiosObservable<BaseResultDTO>({
+      url: `/api/Integration/Lidarr/Configure`,
+      method: "POST",
+      data: data,
+      secure: true,
+      type: ContentType.Json,
+      responseType: "json",
+      ...params,
+    }).pipe(apiCheckPipe<BaseResultDTO>);
+
+  /**
+   * No description
+   * * @tags Integration
+   * @name TestConnectionToLidarrEndpoint
+   * @request GET:/api/Integration/Lidarr/TestConnection
+   * @secure
+   */
+  testConnectionToLidarrEndpoint = (
+    query: {
+      apiKey: string;
+      url: string;
+    },
+    params: RequestParams = {},
+  ) =>
+    axiosObservable<TestConnectionToLidarrEndpointResponse>({
+      url: `/api/Integration/Lidarr/TestConnection`,
+      method: "GET",
+      params: query,
+      secure: true,
+      responseType: "json",
+      ...params,
+    }).pipe(apiCheckPipe<TestConnectionToLidarrEndpointResponse>);
+
+  /**
+   * No description
+   * * @tags Integration
    * @name ClearSonarrConfigurationEndpoint
    * @request DELETE:/api/Integration/Sonarr/Configuration
    * @secure
@@ -516,6 +578,15 @@ export class IntegrationPaths {
       url: `/api/Integration/Radarr/TestConnection`,
       query,
     });
+
+  static clearLidarrConfigurationEndpoint = () =>
+    queryString.stringifyUrl({ url: `/api/Integration/Lidarr/Configuration` });
+
+  static configureLidarrIntegrationEndpoint = () =>
+    queryString.stringifyUrl({ url: `/api/Integration/Lidarr/Configure` });
+
+  static testConnectionToLidarrEndpoint = () =>
+    queryString.stringifyUrl({ url: `/api/Integration/Lidarr/TestConnection` });
 
   static clearSonarrConfigurationEndpoint = () =>
     queryString.stringifyUrl({ url: `/api/Integration/Sonarr/Configuration` });

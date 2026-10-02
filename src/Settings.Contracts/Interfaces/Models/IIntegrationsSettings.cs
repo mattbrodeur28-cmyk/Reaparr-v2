@@ -26,4 +26,9 @@ public interface IIntegrationsSettings
     /// Gets or sets the Radarr integration settings.
     /// </summary>
     RadarrSettings Radarr { get; set; }
+
+    /// <summary>
+    /// Gets or sets the Lidarr integration settings.
+    /// </summary>
+    LidarrSettings Lidarr { get; set; }
 }

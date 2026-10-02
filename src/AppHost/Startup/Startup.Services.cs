@@ -204,6 +204,7 @@ public static partial class Startup
 
         services.RegisterSonarrHttpClient();
         services.RegisterRadarrHttpClient();
+        services.RegisterLidarrHttpClient();
         services.RegisterPlexThumbnailHttpClient();
         services.RegisterGitHubHttpClient(appRuntimeInfo);
 

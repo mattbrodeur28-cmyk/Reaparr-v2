@@ -2,8 +2,8 @@ namespace Reaparr.Application;
 
 /// <summary>
 /// Fired once after Reaparr is fully listening (via <c>IHostApplicationLifetime.ApplicationStarted</c>).
-/// It performs two things that together prevent Radarr/Sonarr from losing download-progress tracking
-/// after Reaparr restarts.
+/// It performs two things that together prevent Radarr, Sonarr and Lidarr from losing
+/// download-progress tracking after Reaparr restarts.
 /// </summary>
 /// <remarks>
 /// <b>Root cause of the problem</b><br/>
@@ -24,8 +24,8 @@ namespace Reaparr.Application;
 /// startup forces a clean re-authentication on the very first request rather than relying on the
 /// session TTL (30 min) to expire naturally.
 ///
-/// <b>Fix 2 — call <c>POST /api/v3/downloadclient/testall</c></b><br/>
-/// This endpoint on Radarr/Sonarr uses <c>_providerFactory.All()</c> — intentionally bypassing
+/// <b>Fix 2 — call <c>POST downloadclient/testall</c></b><br/>
+/// This endpoint (under <c>/api/v3</c> on Radarr and Sonarr, <c>/api/v1</c> on Lidarr) uses <c>_providerFactory.All()</c> — intentionally bypassing
 /// <c>DownloadHandlingEnabled(filterBlockedClients: true)</c> — and calls
 /// <c>_providerFactory.Test(definition)</c> for every enabled client. A passing test immediately
 /// calls <c>RecordSuccess</c>, which sets <c>DisabledTill = null</c> and restores normal monitoring.
@@ -39,18 +39,23 @@ public class NotifyArrAppsOnStartupCommandHandler : ICommandHandler<NotifyArrApp
     private readonly IAuthDbContext _authDbContext;
     private readonly IRadarrSettings _radarrSettings;
     private readonly ISonarrSettings _sonarrSettings;
+    private readonly ILidarrSettings _lidarrSettings;
     private readonly IHttpClientFactory _httpClientFactory;
+
+    private const string ArrV3TestAllRoute = "/api/v3/downloadclient/testall";
 
     public NotifyArrAppsOnStartupCommandHandler(
         IAuthDbContext authDbContext,
         IRadarrSettings radarrSettings,
         ISonarrSettings sonarrSettings,
+        ILidarrSettings lidarrSettings,
         IHttpClientFactory httpClientFactory
     )
     {
         _authDbContext = authDbContext;
         _radarrSettings = radarrSettings;
         _sonarrSettings = sonarrSettings;
+        _lidarrSettings = lidarrSettings;
         _httpClientFactory = httpClientFactory;
     }
 
@@ -64,21 +69,35 @@ public class NotifyArrAppsOnStartupCommandHandler : ICommandHandler<NotifyArrApp
         // if the user has not set up the integration.
         if (_radarrSettings.IsConfigured && _radarrSettings.IsValidUrl() && _radarrSettings.IsValidApiKey())
         {
-            var radarrResult = await Result.Try(() => TestAllAsync(_httpClientFactory.CreateRadarrHttpClient(), ct));
+            var radarrResult = await Result.Try(() =>
+                TestAllAsync(_httpClientFactory.CreateRadarrHttpClient(), ArrV3TestAllRoute, ct)
+            );
             radarrResult.LogIfFailed();
         }
 
         if (_sonarrSettings.IsConfigured && _sonarrSettings.IsValidUrl() && _sonarrSettings.IsValidApiKey())
         {
-            var sonarrResult = await Result.Try(() => TestAllAsync(_httpClientFactory.CreateSonarrHttpClient(), ct));
+            var sonarrResult = await Result.Try(() =>
+                TestAllAsync(_httpClientFactory.CreateSonarrHttpClient(), ArrV3TestAllRoute, ct)
+            );
             sonarrResult.LogIfFailed();
+        }
+
+        // Lidarr has the same escalating back-off, so it needs the same nudge - but it serves
+        // its API under /api/v1 rather than /api/v3.
+        if (_lidarrSettings.IsConfigured && _lidarrSettings.IsValidUrl() && _lidarrSettings.IsValidApiKey())
+        {
+            var lidarrResult = await Result.Try(() =>
+                TestAllAsync(_httpClientFactory.CreateLidarrHttpClient(), LidarrApiRoutes.DownloadClientTestAll, ct)
+            );
+            lidarrResult.LogIfFailed();
         }
 
         return Result.Ok();
     }
 
     /// <summary>
-    /// Calls <c>POST /api/v3/downloadclient/testall</c> on the given arr app.
+    /// Calls <c>POST {testAllRoute}</c> - the arr app's <c>downloadclient/testall</c> endpoint.
     /// </summary>
     /// <remarks>
     /// The endpoint returns <c>200 OK</c> when all clients pass or <c>400 Bad Request</c> when at
@@ -87,12 +106,9 @@ public class NotifyArrAppsOnStartupCommandHandler : ICommandHandler<NotifyArrApp
     /// than 200/400 (e.g. 502/503 — arr app unreachable) is logged as a warning but does not fail
     /// the overall startup sequence.
     /// </remarks>
-    private static async Task TestAllAsync(HttpClient client, CancellationToken ct)
+    private static async Task TestAllAsync(HttpClient client, string testAllRoute, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            new Uri("/api/v3/downloadclient/testall", UriKind.Relative)
-        );
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(testAllRoute, UriKind.Relative));
         var result = await client.SendResultAsync(request, cancellationToken: ct);
 
         // 400 means some download clients failed their test, but the arr app still

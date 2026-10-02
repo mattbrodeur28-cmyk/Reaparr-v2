@@ -13,6 +13,7 @@ public record IntegrationsSettings
             DownloadClientPassword = Guid.NewGuid().ToString().Replace("-", string.Empty),
             Sonarr = SonarrSettings.Create(),
             Radarr = RadarrSettings.Create(),
+            Lidarr = LidarrSettings.Create(),
         };
 
     /// <inheritdoc/>
@@ -49,4 +50,11 @@ public record IntegrationsSettings
         get;
         set => SetProperty(ref field, value);
     } = RadarrSettings.Create();
+
+    /// <inheritdoc/>
+    public required LidarrSettings Lidarr
+    {
+        get;
+        set => SetProperty(ref field, value);
+    } = LidarrSettings.Create();
 }

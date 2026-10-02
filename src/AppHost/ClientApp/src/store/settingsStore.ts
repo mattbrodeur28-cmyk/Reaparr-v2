@@ -53,6 +53,8 @@ export const useSettingsStore = defineStore(StoreNames.SettingsStore, () => {
 				isConfigured: false, sonarrApiKey: '', sonarrBaseUrl: '',
 			}, radarr: {
 				isConfigured: false, radarrApiKey: '', radarrBaseUrl: '',
+			}, lidarr: {
+				isConfigured: false, lidarrApiKey: '', lidarrBaseUrl: '',
 			},
 		},
 		serverSettings: {
@@ -126,9 +128,10 @@ export const useSettingsStore = defineStore(StoreNames.SettingsStore, () => {
 			// Update nested objects first to preserve their references
 			Object.assign(state.integrationsSettings.sonarr, settings.integrationsSettings.sonarr);
 			Object.assign(state.integrationsSettings.radarr, settings.integrationsSettings.radarr);
+			Object.assign(state.integrationsSettings.lidarr, settings.integrationsSettings.lidarr);
 
-			// Then update top-level properties (excluding sonarr and radarr which are already updated)
-			Object.assign<IntegrationsSettingsDTO, Omit<IntegrationsSettingsDTO, 'radarr' | 'sonarr'>>(state.integrationsSettings, {
+			// Then update top-level properties (excluding the arr objects which are already updated)
+			Object.assign<IntegrationsSettingsDTO, Omit<IntegrationsSettingsDTO, 'radarr' | 'sonarr' | 'lidarr'>>(state.integrationsSettings, {
 				downloadClientUsername: settings.integrationsSettings.downloadClientUsername,
 				downloadClientPassword: settings.integrationsSettings.downloadClientPassword,
 				reaparrApiKey: settings.integrationsSettings.reaparrApiKey,

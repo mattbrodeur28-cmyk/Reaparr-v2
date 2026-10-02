@@ -11,7 +11,7 @@
 						Integrations
 					</h1>
 					<p class="v7-page-subtitle">
-						Connect Sonarr, Radarr and TMDB, then configure post-download Plex and library reconciliation.
+						Connect Sonarr, Radarr, Lidarr and TMDB, then configure post-download Plex and library reconciliation.
 					</p>
 				</div>
 			</section>
@@ -45,6 +45,18 @@
 			</q-expansion-item>
 
 			<q-expansion-item
+				v-model="lidarrExpanded"
+				class="v77-integration-expansion"
+				header-class="v77-integration-expansion__header"
+				icon="mdi-music-note"
+				:label="$t('components.lidarr-integration.title')"
+				caption="Music wanted/missing integration, monitored by Lidarr">
+				<div class="v77-integration-expansion__content">
+					<LidarrIntegration />
+				</div>
+			</q-expansion-item>
+
+			<q-expansion-item
 				v-model="tmdbExpanded"
 				class="v77-integration-expansion"
 				header-class="v77-integration-expansion__header"
@@ -67,6 +79,11 @@ import { useLocalStorage } from '@vueuse/core';
 
 const radarrExpanded = useLocalStorage<boolean>(
 	'reaparr-settings-radarr-expanded',
+	false,
+);
+
+const lidarrExpanded = useLocalStorage<boolean>(
+	'reaparr-settings-lidarr-expanded',
 	false,
 );
 

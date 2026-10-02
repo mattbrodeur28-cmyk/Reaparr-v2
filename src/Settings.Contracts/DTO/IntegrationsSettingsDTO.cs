@@ -10,6 +10,16 @@ public class IntegrationsSettingsDTO
 
     public required SonarrSettingsDTO Sonarr { get; init; }
     public required RadarrSettingsDTO Radarr { get; init; }
+    public required LidarrSettingsDTO Lidarr { get; init; }
+}
+
+public class LidarrSettingsDTO
+{
+    public required string LidarrBaseUrl { get; init; }
+
+    public required string LidarrApiKey { get; init; }
+
+    public required bool IsConfigured { get; init; }
 }
 
 public class RadarrSettingsDTO

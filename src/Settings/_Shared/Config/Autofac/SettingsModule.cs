@@ -37,6 +37,7 @@ public class SettingsModule : Module
         // These are non-singleton because they should be re-resolved on each request to get the latest settings
         // Note: Using non-generic As() form here due to static member constraints on these interfaces
         builder.Register(c => c.Resolve<IUserSettings>().IntegrationsSettings.Sonarr).As(typeof(ISonarrSettings));
+        builder.Register(c => c.Resolve<IUserSettings>().IntegrationsSettings.Lidarr).As(typeof(ILidarrSettings));
         builder.Register(c => c.Resolve<IUserSettings>().IntegrationsSettings.Radarr).As(typeof(IRadarrSettings));
     }
 }
