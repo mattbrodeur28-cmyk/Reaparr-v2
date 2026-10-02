@@ -27,6 +27,8 @@ public interface IReaparrDbContext : IDisposable
 
     DbSet<FolderPath> FolderPaths { get; }
 
+    DbSet<DownloadClientCategory> DownloadClientCategories { get; }
+
     DbSet<Notification> Notifications { get; }
 
     DbSet<PlexLibrary> PlexLibraries { get; }

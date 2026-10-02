@@ -14,4 +14,19 @@ public static class IntegrationDefinitions
     /// </summary>
     // ReSharper disable once InconsistentNaming
     public const string MUSIC_DEFAULT_CATEGORY = "reaparr-music";
+
+    /// <summary>
+    /// The categories Reaparr always advertises, regardless of what the download-client API has
+    /// been asked to create. Each integration's default category must appear here or that
+    /// integration's download-client validation fails with "Configuration of label failed".
+    /// </summary>
+    public static readonly string[] BuiltInCategories =
+    [
+        SONARR_DEFAULT_CATEGORY,
+        RADARR_DEFAULT_CATEGORY,
+        MUSIC_DEFAULT_CATEGORY,
+    ];
+
+    public static bool IsBuiltInCategory(string category) =>
+        BuiltInCategories.Contains(category, StringComparer.OrdinalIgnoreCase);
 }

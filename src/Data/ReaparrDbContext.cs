@@ -17,6 +17,7 @@ public sealed class ReaparrDbContext : DbContext, IReaparrDbContext, IReaparrDbC
     public DbSet<PlexAccount> PlexAccounts { get; set; }
 
     public DbSet<FolderPath> FolderPaths { get; set; }
+    public DbSet<DownloadClientCategory> DownloadClientCategories { get; set; }
 
     public DbSet<Notification> Notifications { get; set; }
 

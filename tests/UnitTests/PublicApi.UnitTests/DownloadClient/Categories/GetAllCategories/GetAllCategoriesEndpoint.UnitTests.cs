@@ -27,16 +27,47 @@ public class GetAllCategoriesEndpointUnitTests : BaseEndpointWithoutRequestUnitT
         var result = await TestEndpointHandleAsync();
 
         // Assert
-        result.Response.ShouldNotBeNull();
-
-        var advertised = JsonSerializer
-            .SerializeToDocument(result.Response)
-            .RootElement.EnumerateObject()
-            .Select(x => x.Name)
-            .ToList();
+        var advertised = AdvertisedCategoryNames(result.Response);
 
         advertised.ShouldContain(IntegrationDefinitions.SONARR_DEFAULT_CATEGORY);
         advertised.ShouldContain(IntegrationDefinitions.RADARR_DEFAULT_CATEGORY);
         advertised.ShouldContain(IntegrationDefinitions.MUSIC_DEFAULT_CATEGORY);
+        advertised.ShouldBe(IntegrationDefinitions.BuiltInCategories, ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// A category an arr created for itself has to be advertised alongside the built-in ones,
+    /// otherwise pointing an arr at a custom category name fails its download-client validation.
+    /// </summary>
+    [Test]
+    public async Task ShouldAdvertiseCreatedCategory_WhenOneWasPersisted()
+    {
+        // Arrange
+        await SetupDatabase(7202, config => config.PlexServerCount = 1);
+
+        // IDbContext hands back a new context on every access, so the add and the save have to
+        // run against the same instance.
+        var dbContext = IDbContext;
+        dbContext.DownloadClientCategories.Add(
+            new DownloadClientCategory { Name = "my-custom-label", CreatedAt = DateTime.UtcNow }
+        );
+        await dbContext.SaveChangesAsync(CancellationToken);
+
+        // Act
+        var result = await TestEndpointHandleAsync();
+
+        // Assert
+        var advertised = AdvertisedCategoryNames(result.Response);
+
+        advertised.ShouldContain("my-custom-label");
+        foreach (var builtIn in IntegrationDefinitions.BuiltInCategories)
+            advertised.ShouldContain(builtIn);
+    }
+
+    private static List<string> AdvertisedCategoryNames(object? response)
+    {
+        response.ShouldNotBeNull();
+
+        return JsonSerializer.SerializeToDocument(response).RootElement.EnumerateObject().Select(x => x.Name).ToList();
     }
 }
