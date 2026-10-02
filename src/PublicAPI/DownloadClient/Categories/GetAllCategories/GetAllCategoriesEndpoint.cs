@@ -38,6 +38,16 @@ public class GetAllCategoriesEndpoint : EndpointWithoutRequest<object>
                 name = IntegrationDefinitions.RADARR_DEFAULT_CATEGORY,
                 savePath = downloadFolder.DirectoryPath,
             },
+            // Lidarr, and any other client polling /torrents/info by the music category.
+            // Every arr validates its configured category by listing the labels here and, when the
+            // label is absent, calling torrents/createCategory and listing again. createCategory is
+            // a no-op, so a category missing from this list fails validation with
+            // "Configuration of label failed" no matter how many times it is retried.
+            [IntegrationDefinitions.MUSIC_DEFAULT_CATEGORY] = new
+            {
+                name = IntegrationDefinitions.MUSIC_DEFAULT_CATEGORY,
+                savePath = downloadFolder.DirectoryPath,
+            },
         };
 
         await Send.OkAsync(categories, cancellation: ct);
