@@ -166,6 +166,12 @@ function toTranslation(type: FolderType): IHelp {
 				text: t('help.settings.paths.tv-show-folder.text'),
 				title: t('help.settings.paths.tv-show-folder.title'),
 			};
+		case FolderType.MusicFolder:
+			return {
+				label: t('help.settings.paths.music-folder.label'),
+				text: t('help.settings.paths.music-folder.text'),
+				title: t('help.settings.paths.music-folder.title'),
+			};
 		default:
 			throw new Error('FolderType not supported');
 	}

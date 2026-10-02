@@ -14,6 +14,15 @@ interface IFolderPathStoreState {
 	folderPaths: FolderPathDTO[];
 }
 
+/**
+ * The seeded destination folder paths shown on the paths page, in seed order:
+ * 1 download, 2 movie, 3 tv show, 4 music.
+ */
+const DEFAULT_FOLDER_PATH_IDS = [1, 2, 3, 4];
+
+/** The subset the setup wizard requires to be valid before it will let the user continue. */
+const SETUP_REQUIRED_FOLDER_PATH_IDS = [1, 2, 3];
+
 export const useFolderPathStore = defineStore(StoreNames.FolderPathStore, () => {
 	const defaultState: IFolderPathStoreState = {
 		folderPaths: [],
@@ -113,9 +122,18 @@ export const useFolderPathStore = defineStore(StoreNames.FolderPathStore, () => 
 
 			return state.folderPaths;
 		},
-		getDefaultFolderPaths: computed(() => state.folderPaths.filter((x) => x.id === 1 || x.id === 2 || x.id === 3)),
+		// ReaparrDBContextSeed seeds these ids in this order, and
+		// PlexMediaTypeExtensions.ToDefaultDestinationFolderId resolves a download task's
+		// destination to them: 1 download, 2 movie, 3 tv show, 4 music.
+		getDefaultFolderPaths: computed(() =>
+			state.folderPaths.filter((x) => DEFAULT_FOLDER_PATH_IDS.includes(x.id)),
+		),
+		// Setup completion deliberately does not require the music path. Music is optional and the
+		// wizard must not block a movie/TV-only install on a music directory that does not exist.
 		areDefaultFolderPathsValid: computed(() =>
-			get(getters.getDefaultFolderPaths).every((x) => x.isValid),
+			state.folderPaths
+				.filter((x) => SETUP_REQUIRED_FOLDER_PATH_IDS.includes(x.id))
+				.every((x) => x.isValid),
 		),
 		getFolderPathsGroups: (onlyDefaults: boolean) => {
 			const { t } = useI18n();

@@ -911,6 +911,11 @@
 					"label": "TV-Show Path",
 					"text": "The default path of TV-Show when no custom destination has been selected.",
 					"title": "TV-Show Path"
+				},
+				"music-folder": {
+					"label": "Music destination path",
+					"text": "Where Reaparr moves completed music downloads. Point this at the same directory Lidarr imports from, otherwise Lidarr cannot pick the files up after Reaparr finishes with them.\n\nIn Docker both containers must see this path at the same location.",
+					"title": "Music destination path"
 				}
 			},
 			"integrations": {
